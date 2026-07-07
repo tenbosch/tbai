@@ -1,0 +1,34 @@
+# Secrets
+*.env
+!*.env.example
+
+# Database
+backend/chat_history.db
+backend/chat_history.db-journal
+backend/chat_history.db-wal
+backend/chat_history.db-shm
+
+# Python
+**/__pycache__/
+*.pyc
+.venv/
+
+# Node (all projects: frontend/, desktop/)
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+desktop/node_modules/
+desktop/dist/
+
+# User uploads (chat attachments — personal data)
+backend/uploads/
+
+# Large downloaded binaries
+cloudflare/*.exe
+
+# Local agent/editor settings
+.claude/settings.local.json
+
+# Process tracking
+.tbai.pids.json

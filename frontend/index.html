@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>tBai</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, #root { margin: 0; padding: 0; height: 100%; }
+      html, body { overflow-x: hidden; }
+      @keyframes blink { 50% { opacity: 0; } }
+      @keyframes intro-glow-pulse {
+        from { transform: scale(0.9) rotate(0deg); opacity: 0.22; }
+        to { transform: scale(1.1) rotate(180deg); opacity: 0.42; }
+      }
+      @keyframes intro-hint-fadein {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes intro-hint-pulse {
+        0%, 100% { opacity: 0.55; }
+        50% { opacity: 1; }
+      }
+      .intro-hint {
+        opacity: 0;
+        animation:
+          intro-hint-fadein 500ms ease-out 3100ms forwards,
+          intro-hint-pulse 1.8s ease-in-out 3600ms infinite;
+      }
+      .intro-hint.intro-hint-reduced {
+        animation: intro-hint-fadein 300ms ease-out 400ms forwards;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .intro-glow { animation: none !important; }
+        .intro-hint { animation: intro-hint-fadein 300ms ease-out 400ms forwards !important; }
+      }
+      /* Show delete button only when hovering the session item */
+      .session-item:hover .session-delete { opacity: 1 !important; }
+      .session-card:hover .session-card-delete { opacity: 1 !important; }
+      /* Touch devices have no hover state, so keep delete buttons always visible */
+      @media (hover: none), (pointer: coarse) {
+        .session-delete, .session-card-delete { opacity: 1 !important; }
+      }
+
+      /* 100vh with a 100dvh override for mobile Safari's collapsing toolbar */
+      .tbai-vh { height: 100vh; height: 100dvh; }
+
+      /* Markdown: keep long content from widening the page on mobile */
+      .markdown-body { overflow-wrap: anywhere; }
+      .markdown-body pre { overflow-x: auto; max-width: 100%; }
+      .markdown-body img, .markdown-body table { max-width: 100%; }
+
+      /* Markdown tables */
+      .markdown-body table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+        font-size: 0.9em;
+      }
+      .markdown-body th, .markdown-body td {
+        border: 1px solid var(--tbai-md-border, #d0d0d0);
+        padding: 8px 12px;
+        text-align: left;
+      }
+      .markdown-body th {
+        background: var(--tbai-md-th-bg, #e8f0fe);
+        font-weight: 600;
+        color: var(--tbai-md-th-text, #1a1a2e);
+      }
+      .markdown-body tr:nth-child(even) td {
+        background: var(--tbai-md-row-alt, #f5f7ff);
+      }
+      .markdown-body tr:hover td {
+        background: var(--tbai-md-row-hover, #eef2ff);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Polyfill for Brave: Vite 8.1 placeholders not replaced by dev server transform in some browsers -->
+    <script>
+      window.__BUNDLED_DEV__ = false;
+      window.__SERVER_FORWARD_CONSOLE__ = false;
+      window.__HMR_ENABLE_OVERLAY__ = true;
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

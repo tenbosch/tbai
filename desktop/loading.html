@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tBai</title>
+    <style>
+      :root {
+        --bg: #1e1e2e;
+        --surface: #181825;
+        --text: #cdd6f4;
+        --muted: #6c7086;
+        --accent: #4d86f5;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .wrap {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        padding: 32px;
+        text-align: center;
+      }
+      .mark {
+        font-size: 44px;
+        font-weight: 500;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .mark .ai { color: var(--accent); font-weight: 600; }
+      .status { font-size: 15px; color: var(--text); margin: 0; }
+      .hint { font-size: 12.5px; color: var(--muted); margin: 0; max-width: 300px; line-height: 1.5; }
+      .spinner {
+        width: 26px;
+        height: 26px;
+        border: 3px solid rgba(255, 255, 255, 0.12);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .spinner { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mark">tB<span class="ai">ai</span></div>
+      <div class="spinner"></div>
+      <p class="status">Starting tBai&hellip;</p>
+      <p class="hint">
+        Waiting for the local tBai stack at <code>localhost:5173</code>.
+        Make sure it's running (<code>start.bat</code>). This will connect
+        automatically once it's up.
+      </p>
+    </div>
+  </body>
+</html>

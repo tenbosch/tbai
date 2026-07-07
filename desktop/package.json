@@ -1,0 +1,44 @@
+{
+  "name": "tbai-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal always-on desktop wrapper for the tBai family AI assistant",
+  "author": {
+    "name": "Jeff ten Bosch",
+    "email": "tenbosch@users.noreply.github.com"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "org.tenbosch.tbai.desktop",
+    "productName": "tBai",
+    "files": [
+      "main.js",
+      "app-preload.js",
+      "toolbar-preload.js",
+      "toolbar.html",
+      "loading.html",
+      "build/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

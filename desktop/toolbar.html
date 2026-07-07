@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tBai toolbar</title>
+    <style>
+      :root {
+        --bg: #181825;
+        --line: #313244;
+        --text: #cdd6f4;
+        --muted: #6c7086;
+        --hover: #313244;
+        --active: #45475a;
+        --accent: #4d86f5;
+        --badge: #f38ba8;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .bar {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .spacer { flex: 1 1 auto; }
+      .sep { width: 1px; align-self: stretch; margin: 8px 6px; background: var(--line); }
+      button.tb {
+        appearance: none;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        width: 32px;
+        height: 30px;
+        border-radius: 7px;
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        transition: background 0.12s ease;
+      }
+      button.tb:hover { background: var(--hover); }
+      button.tb.active { background: var(--active); }
+      button.tb.active::after {
+        content: "";
+        position: absolute;
+        left: 7px; right: 7px; bottom: -1px;
+        height: 2px;
+        border-radius: 2px;
+        background: var(--accent);
+      }
+      button.tb[hidden] { display: none; }
+      .badge {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 4px;
+        border-radius: 8px;
+        background: var(--badge);
+        color: #11111b;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 15px;
+        text-align: center;
+      }
+      select.model {
+        appearance: none;
+        background: #11111b;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        height: 26px;
+        max-width: 170px;
+        padding: 0 22px 0 9px;
+        font-size: 12.5px;
+        cursor: pointer;
+        /* caret */
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%236c7086'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+      }
+      select.model:hover { border-color: var(--muted); }
+      select.model[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button class="tb" id="btn-home" title="Home">🏠</button>
+      <button class="tb" id="btn-chats" title="Your Chats">💬</button>
+      <button class="tb" id="btn-new" title="New Chat">➕</button>
+      <button class="tb" id="btn-lists" title="Family Lists">📝</button>
+      <button class="tb" id="btn-admin" title="Admin" hidden>🛡️</button>
+
+      <span class="sep"></span>
+      <select class="model" id="model" title="Choose which AI model answers" hidden></select>
+
+      <span class="spacer"></span>
+
+      <button class="tb" id="btn-notif" title="Notifications">🔔<span class="badge" id="badge" hidden>0</span></button>
+      <button class="tb" id="btn-settings" title="Settings">⚙️</button>
+      <button class="tb" id="btn-signout" title="Sign out">⏻</button>
+    </div>
+
+    <script>
+      const api = window.toolbarAPI;
+      const $ = (id) => document.getElementById(id);
+
+      // ── commands out ──────────────────────────────────────────────────────
+      const nav = (page) => api && api.sendCommand("navigate", { page });
+      $("btn-home").onclick = () => nav("home");
+      $("btn-chats").onclick = () => nav("sessions");
+      $("btn-lists").onclick = () => nav("lists");
+      $("btn-admin").onclick = () => nav("admin");
+      $("btn-new").onclick = () => api && api.sendCommand("new-chat");
+      $("btn-notif").onclick = () => api && api.sendCommand("toggle-notifications");
+      $("btn-settings").onclick = () => api && api.sendCommand("open-settings");
+      $("btn-signout").onclick = () => api && api.sendCommand("sign-out");
+      $("model").onchange = (e) =>
+        api && api.sendCommand("set-model", { model: e.target.value });
+
+      // ── state in (merged snapshots) ───────────────────────────────────────
+      const PAGE_BTN = {
+        home: "btn-home",
+        sessions: "btn-chats",
+        chat: "btn-chats",
+        lists: "btn-lists",
+        admin: "btn-admin",
+      };
+      const state = { models: [], currentModel: null, page: null, isAdmin: false, unreadCount: 0 };
+
+      function renderModels() {
+        const sel = $("model");
+        const list = state.models || [];
+        if (list.length < 2) {
+          sel.hidden = true;
+          return;
+        }
+        // Rebuild only when the option set changed, to preserve focus/scroll.
+        const want = list.map((m) => m.id).join("|");
+        if (sel.dataset.set !== want) {
+          sel.innerHTML = "";
+          for (const m of list) {
+            const o = document.createElement("option");
+            o.value = m.id;
+            o.textContent = m.kind === "cloud" ? "☁️ " + m.id : m.id;
+            sel.appendChild(o);
+          }
+          sel.dataset.set = want;
+        }
+        if (state.currentModel) sel.value = state.currentModel;
+        sel.hidden = false;
+      }
+
+      function renderActive() {
+        const activeId = PAGE_BTN[state.page];
+        for (const id of ["btn-home", "btn-chats", "btn-lists", "btn-admin"]) {
+          $(id).classList.toggle("active", id === activeId);
+        }
+      }
+
+      function apply(partial) {
+        Object.assign(state, partial || {});
+        if ("models" in (partial || {}) || "currentModel" in (partial || {})) renderModels();
+        if ("page" in (partial || {})) renderActive();
+        if ("isAdmin" in (partial || {})) $("btn-admin").hidden = !state.isAdmin;
+        if ("unreadCount" in (partial || {})) {
+          const n = state.unreadCount || 0;
+          const badge = $("badge");
+          badge.hidden = n <= 0;
+          badge.textContent = n > 99 ? "99+" : String(n);
+        }
+      }
+
+      if (api) api.onState(apply);
+    </script>
+  </body>
+</html>
