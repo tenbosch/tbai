@@ -685,6 +685,83 @@ function renderSourcesMarkdown(items) {
   );
 }
 
+// The exact prefix renderSourcesMarkdown (and backend _render_sources_markdown) emit.
+const SOURCES_DELIM = "\n\n---\n**Sources:**\n";
+const SOURCE_LINE_RE = /^-\s*\[([^\]]*)\]\(([^)]+)\)\s*$/;
+
+// Split a saved/streamed assistant message into its answer body and the parsed
+// list of {title, url} sources, so the sources render as styled cards instead of
+// a raw markdown bullet list. Works identically for a live stream and a reloaded
+// session because both persist the same SOURCES_DELIM format.
+function splitSources(text) {
+  if (!text) return { body: text || "", sources: [] };
+  const idx = text.lastIndexOf(SOURCES_DELIM);
+  if (idx === -1) return { body: text, sources: [] };
+  const body = text.slice(0, idx);
+  const sources = text
+    .slice(idx + SOURCES_DELIM.length)
+    .split("\n")
+    .map((line) => {
+      const m = line.match(SOURCE_LINE_RE);
+      return m ? { title: m[1], url: m[2] } : null;
+    })
+    .filter(Boolean);
+  return { body, sources };
+}
+
+// One clickable source row: favicon (with globe fallback), truncated title, domain.
+function SourceRow({ item, styles }) {
+  const [iconFailed, setIconFailed] = useState(false);
+  let host = "";
+  try {
+    host = new URL(item.url).hostname;
+  } catch {
+    host = "";
+  }
+  const domain = host.replace(/^www\./, "");
+  const faviconUrl = host
+    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
+    : null;
+  return (
+    <a href={item.url} target="_blank" rel="noopener noreferrer" style={styles.sourceRow}>
+      {faviconUrl && !iconFailed ? (
+        <img
+          src={faviconUrl}
+          alt=""
+          width={18}
+          height={18}
+          style={styles.sourceFavicon}
+          onError={() => setIconFailed(true)}
+        />
+      ) : (
+        <span style={styles.sourceFaviconFallback} aria-hidden="true">
+          🌐
+        </span>
+      )}
+      <span style={styles.sourceTitle}>{item.title || domain || item.url}</span>
+      {domain && <span style={styles.sourceDomain}>{domain}</span>}
+    </a>
+  );
+}
+
+// Boxed "Sources" list rendered under an assistant reply that cited web results.
+function SourcesList({ items, styles }) {
+  if (!items?.length) return null;
+  return (
+    <div style={styles.sourcesBox}>
+      <div style={styles.sourcesHeader}>
+        <span>🌐 Sources</span>
+        <span style={styles.sourcesCount}>
+          {items.length} result{items.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {items.map((item, i) => (
+        <SourceRow key={`${item.url}-${i}`} item={item} styles={styles} />
+      ))}
+    </div>
+  );
+}
+
 // Memoized so ReactMarkdown only re-parses the actively streaming message —
 // settled messages keep their object identity and skip re-render entirely.
 const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles, authFetch }) {
@@ -710,8 +787,17 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
     setSpeaking(true);
   };
 
+  // Peel the cited-sources block off the answer so it renders as styled cards
+  // (only meaningful for assistant messages; user text has no sources block).
+  const { body, sources } = msg.role === "assistant" ? splitSources(msg.text) : { body: msg.text, sources: [] };
+
+  // Give replies that carry a sources box a little more room so the cards aren't cramped.
+  const assistantStyle = sources.length
+    ? { ...styles.assistantBubble, maxWidth: "92%" }
+    : styles.assistantBubble;
+
   return (
-    <div style={msg.role === "user" ? styles.userBubble : styles.assistantBubble}>
+    <div style={msg.role === "user" ? styles.userBubble : assistantStyle}>
       <strong>{msg.role === "user" ? "You" : "Assistant"}:</strong>
       {msg.role === "user" ? (
         <>
@@ -731,8 +817,9 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
       ) : (
         <div style={styles.markdown} className="markdown-body">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {msg.text}
+            {body}
           </ReactMarkdown>
+          <SourcesList items={sources} styles={styles} />
           {msg.status && (
             <div style={styles.statusChip} aria-live="polite" role="status">
               🔍 <em>{msg.status}</em>
@@ -1112,6 +1199,44 @@ function getStyles(theme) {
       maxWidth: "80%",
     },
     markdown: { lineHeight: 1.6 },
+    sourcesBox: {
+      marginTop: 10,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 10,
+      background: theme.surface,
+      overflow: "hidden",
+      fontSize: 13,
+    },
+    sourcesHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "8px 12px",
+      color: theme.muted,
+      fontWeight: 600,
+      letterSpacing: 0.3,
+    },
+    sourcesCount: { fontWeight: 400, color: theme.muted },
+    sourceRow: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "8px 12px",
+      textDecoration: "none",
+      color: theme.text,
+      borderTop: `1px solid ${theme.border}`,
+      minWidth: 0,
+    },
+    sourceFavicon: { width: 18, height: 18, borderRadius: 4, flexShrink: 0 },
+    sourceFaviconFallback: { fontSize: 14, width: 18, flexShrink: 0, textAlign: "center" },
+    sourceTitle: {
+      flex: 1,
+      minWidth: 0,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    sourceDomain: { color: theme.muted, flexShrink: 0, fontSize: 12 },
     cursor: { animation: "blink 1s step-end infinite" },
     iconBtn: {
       background: "none",
