@@ -23,6 +23,7 @@ from agent_logic import stream_agent
 from db import connect as db_connect
 import databricks_provider
 import google_tools  # importing registers the calendar/gmail/drive tools
+import wikipedia_tools  # importing registers the wikipedia_lookup tool
 import mcp_client
 import providers
 import skills  # importing also registers the load_skill tool

@@ -51,9 +51,19 @@ def _system_prompt(ctx: ToolContext, facts: list[dict]) -> str:
         f"You are tBai, a helpful AI assistant for the ten Bosch family. "
         f"The current local date and time is {now}. "
         f"You are talking to {ctx.user_name}.",
+    ]
+    # Skills come before the web_search mandate below, and that mandate defers to
+    # them. Listed last, they lost: a factual-sounding request ("tell me about
+    # <movie>") would trip the emphatic "you MUST use web_search" rule and go
+    # straight to search, ignoring the skill that covers it.
+    skills_block = skills_prompt_block()
+    if skills_block:
+        parts.append(skills_block)
+    parts += [
         "Your training data has a cutoff well before today, so for any events, news, sports results, "
         "prices, or other information from 2025 onwards you MUST use the web_search tool — "
-        "do not guess or answer from memory for recent topics.",
+        "do not guess or answer from memory for recent topics. The exception is a request one of "
+        "your skills covers: load that skill first and use whichever tools it names.",
         "When you receive web search results:\n"
         "- Summarise the actual content from the snippets directly in your answer.\n"
         "- Do NOT tell the user to check external websites.\n"
@@ -66,9 +76,6 @@ def _system_prompt(ctx: ToolContext, facts: list[dict]) -> str:
         "call remember_fact to store it for future conversations. If they ask you to forget "
         "something, call forget_fact. Do not store transient conversation details.",
     ]
-    skills_block = skills_prompt_block()
-    if skills_block:
-        parts.append(skills_block)
     if facts:
         fact_lines = "\n".join(f"- {f['fact']}" for f in facts)
         parts.append(
