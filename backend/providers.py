@@ -13,7 +13,7 @@ import os
 
 import anthropic
 
-from tools import TOOL_REGISTRY, ToolContext
+from tools import TOOL_REGISTRY, ToolContext, record_tool_use
 
 log = logging.getLogger("tbai.providers")
 
@@ -183,6 +183,7 @@ async def _run_tool(name: str, args: dict, ctx: ToolContext):
     tool = TOOL_REGISTRY.get(name)
     if tool is None:
         return f"Error: unknown tool '{name}'", []
+    record_tool_use(ctx, name, args or {})
     try:
         result = await tool.func(args, ctx)
     except Exception as exc:

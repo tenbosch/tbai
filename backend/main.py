@@ -251,6 +251,26 @@ async def init_db():
             )
         """)
 
+        # Which tools/skills produced each assistant message. The agent loops keep
+        # their tool_call/tool-result messages in an in-memory list that dies with
+        # the turn, so without this row the model has no way to answer "did you use
+        # the skill?" on a later turn — and used to confabulate a denial. Unlike
+        # `attachments` this cascades from `messages`, so it needs no prune sweep.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS message_tools (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                tool_name  TEXT NOT NULL,
+                detail     TEXT,
+                ordinal    INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            )
+        """)
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_message_tools_message "
+            "ON message_tools(message_id)"
+        )
+
         # Seed the legacy default user (id=1); authenticated users will have real emails.
         await db.execute(
             "INSERT OR IGNORE INTO users (id, username) VALUES (1, 'default')"
@@ -391,13 +411,62 @@ def _render_sources_markdown(items: list[dict]) -> str:
     return f"\n\n---\n**Sources:**\n{lines}\n"
 
 
-async def _save_assistant_message(session_id: int, content: str) -> int:
+async def _tools_for_session(db, session_id: int) -> dict[int, list[dict]]:
+    """{message_id: [{"name", "detail"}, …]} for one session, in call order."""
+    async with db.execute(
+        "SELECT mt.message_id, mt.tool_name, mt.detail "
+        "FROM message_tools mt JOIN messages m ON m.id = mt.message_id "
+        "WHERE m.session_id = ? ORDER BY mt.message_id, mt.ordinal",
+        (session_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    out: dict[int, list[dict]] = {}
+    for message_id, name, detail in rows:
+        out.setdefault(message_id, []).append({"name": name, "detail": detail})
+    return out
+
+
+def _format_tools_used(tools: list[dict]) -> str:
+    """Render a tool record as the compact annotation the model reads back."""
+    parts = [f"{t['name']}({t['detail']})" if t.get("detail") else t["name"] for t in tools]
+    return f"[tools used: {', '.join(parts)}]"
+
+
+def _dedupe_tools(tools_used: list[dict]) -> list[dict]:
+    """Collapse repeat calls, preserving first-call order.
+
+    A turn may call web_search three times; the useful record is *that* it
+    searched, not how often.
+    """
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for t in tools_used or []:
+        key = (t.get("name"), t.get("detail"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": t.get("name"), "detail": t.get("detail")})
+    return out
+
+
+async def _save_assistant_message(
+    session_id: int, content: str, tools_used: list[dict] | None = None
+) -> int:
     async with db_connect() as db:
         cursor = await db.execute(
             "INSERT INTO messages (session_id, role, content) VALUES (?, 'assistant', ?)",
             (session_id, content),
         )
         message_id = cursor.lastrowid
+        tools = _dedupe_tools(tools_used or [])
+        if tools:
+            # Same transaction as the message itself, so a reply can never be
+            # saved with its tool record missing.
+            await db.executemany(
+                "INSERT INTO message_tools (message_id, tool_name, detail, ordinal) "
+                "VALUES (?, ?, ?, ?)",
+                [(message_id, t["name"], t["detail"], i) for i, t in enumerate(tools)],
+            )
         await db.execute(
             "UPDATE sessions SET updated_at = datetime('now') WHERE id = ?",
             (session_id,),
@@ -446,9 +515,10 @@ async def stream_agent_and_save(
         completed = True
     finally:
         full_response = "".join(tokens) + sources_md
+        tools_used = _dedupe_tools(ctx.tools_used)
         if full_response.strip():
             save_task = asyncio.create_task(
-                _save_assistant_message(session_id, full_response)
+                _save_assistant_message(session_id, full_response, ctx.tools_used)
             )
             try:
                 message_id = await asyncio.shield(save_task)
@@ -457,7 +527,11 @@ async def stream_agent_and_save(
                 # completion in the background, so the reply is not lost.
                 pass
     if completed and message_id is not None:
-        yield json.dumps({"type": "done", "message_id": message_id}) + "\n"
+        # Carry the tool record on `done` so the just-streamed bubble can show it
+        # without refetching the session, exactly as message_id already does.
+        yield json.dumps(
+            {"type": "done", "message_id": message_id, "tools_used": tools_used}
+        ) + "\n"
 
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
@@ -1010,12 +1084,16 @@ async def get_session(session_id: int, current_user: dict = Depends(get_current_
             (session_id,),
         ) as cur:
             rows = await cur.fetchall()
+        tools_by_message = await _tools_for_session(db, session_id)
     return {
         "id": session[0],
         "title": session[1],
         "created_at": session[2],
         "updated_at": session[3],
-        "messages": [{"id": r[0], "role": r[1], "text": r[2]} for r in rows],
+        "messages": [
+            {"id": r[0], "role": r[1], "text": r[2], "tools_used": tools_by_message.get(r[0], [])}
+            for r in rows
+        ],
     }
 
 
@@ -1372,17 +1450,33 @@ async def chat(request: Request, payload: ChatRequest, current_user: dict = Depe
         # History is everything before the just-inserted user message, keyed by
         # id rather than second-resolution created_at (which ties arbitrarily).
         async with db.execute(
-            "SELECT role, content FROM messages WHERE session_id = ? AND id < ? ORDER BY id",
+            "SELECT id, role, content FROM messages WHERE session_id = ? AND id < ? ORDER BY id",
             (payload.session_id, user_message_id),
         ) as cur:
             rows = await cur.fetchall()
+        history_tools = await _tools_for_session(db, payload.session_id)
 
         async with db.execute(
             "SELECT custom_name, given_name FROM users WHERE id = ?", (user_id,)
         ) as cur:
             name_row = await cur.fetchone()
 
-    history = [{"role": r[0], "content": r[1]} for r in rows]
+    # Append each assistant turn's tool record to its own text. The loops'
+    # tool_call messages are gone by now (they never leave the turn), so this
+    # annotation is the only thing letting the model answer "did you use the
+    # skill?" truthfully instead of guessing. _system_prompt explains the marker
+    # and forbids the model from writing one itself.
+    history = [
+        {
+            "role": role,
+            "content": (
+                f"{content}\n\n{_format_tools_used(history_tools[mid])}"
+                if role == "assistant" and history_tools.get(mid)
+                else content
+            ),
+        }
+        for mid, role, content in rows
+    ]
     user_name = (
         (name_row and (name_row[0] or name_row[1]))
         or current_user.get("given_name")

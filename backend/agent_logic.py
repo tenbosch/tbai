@@ -5,7 +5,7 @@ from datetime import datetime
 import httpx
 
 from skills import skills_prompt_block  # importing also registers the load_skill tool
-from tools import TOOL_REGISTRY, ToolContext, tool_schemas
+from tools import TOOL_REGISTRY, ToolContext, record_tool_use, tool_schemas
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 
@@ -75,6 +75,20 @@ def _system_prompt(ctx: ToolContext, facts: list[dict]) -> str:
         "When the user shares a durable preference, fact, allergy, important date, or family detail, "
         "call remember_fact to store it for future conversations. If they ask you to forget "
         "something, call forget_fact. Do not store transient conversation details.",
+        # You cannot otherwise see your own past tool calls: each turn's
+        # tool_call/tool-result messages are dropped when the turn ends, so asked
+        # "did you use the skill?" you would have to guess — and guessing reliably
+        # produced a false denial. This annotation is the record.
+        "Earlier assistant messages may end with a line like "
+        "'[tools used: load_skill(movie-details), wikipedia_lookup]'. That line is added "
+        "by the system and is an accurate record of the tools you actually used on that "
+        "turn — it is the only record you have, since you cannot otherwise see your own "
+        "past tool calls. Use it to answer questions about what you did. If an assistant "
+        "message has no such line, you used no tools on that turn — except that older "
+        "messages can predate this record, so if a reply without the line clearly did use "
+        "tools (for example it cites sources), say you cannot tell rather than denying it. "
+        "Never write one of these lines yourself, and never claim you used or skipped a "
+        "tool without one.",
     ]
     if facts:
         fact_lines = "\n".join(f"- {f['fact']}" for f in facts)
@@ -150,6 +164,7 @@ async def _execute_tool(name: str, args: dict, ctx: ToolContext):
         # Every tool_call must get a matching tool result or the next request
         # is malformed; a hallucinated tool name gets an error result.
         return f"Error: unknown tool '{name}'", []
+    record_tool_use(ctx, name, args or {})
     try:
         result = await tool.func(args or {}, ctx)
     except Exception as exc:  # tool bugs must not kill the stream

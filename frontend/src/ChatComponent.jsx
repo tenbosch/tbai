@@ -16,6 +16,7 @@ import {
   ThumbsDown,
   Plus,
   X,
+  Wrench,
 } from "lucide-react";
 import TbaiLogo from "./TbaiLogo";
 import ProfileMenu from "./ProfileMenu";
@@ -435,7 +436,14 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
             updateLast((m) => ({ ...m, status: null, error: event.text }));
           } else if (event.type === "done") {
             // Real DB id arrives in-stream — no session refetch needed for feedback.
-            updateLast((m) => ({ ...m, id: event.message_id, status: null }));
+            updateLast((m) => ({
+              ...m,
+              id: event.message_id,
+              status: null,
+              // Carried on `done` so the bubble can show what answered it
+              // without refetching the session.
+              tools_used: event.tools_used || [],
+            }));
           }
         }
       }
@@ -875,6 +883,9 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
           {isStreamingThis && !msg.status && <span style={styles.cursor}>▍</span>}
         </div>
       )}
+      {msg.role === "assistant" && !isStreamingThis && (
+        <ToolsUsed tools={msg.tools_used} styles={styles} />
+      )}
       {msg.role === "assistant" && msg.id != null && !isStreamingThis && (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <FeedbackButtons messageId={msg.id} authFetch={authFetch} styles={styles} />
@@ -897,6 +908,24 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
     </div>
   );
 });
+
+// What actually produced this reply. The status chips shown while streaming are
+// ephemeral, so without this there is no way to audit a past answer — and the
+// model itself can't tell you, since it never sees its own prior tool calls.
+// A skill is shown by name (`load_skill(movie-details)` reads as "movie-details
+// skill"); everything else is shown as the tool name.
+function ToolsUsed({ tools, styles }) {
+  if (!tools?.length) return null;
+  const labels = tools.map((t) =>
+    t.name === "load_skill" && t.detail ? `${t.detail} skill` : t.name
+  );
+  return (
+    <div style={styles.toolsUsed}>
+      <Wrench size={12} strokeWidth={1.75} />
+      <span>answered using {labels.join(" · ")}</span>
+    </div>
+  );
+}
 
 function FeedbackButtons({ messageId, authFetch, styles }) {
   const [phase, setPhase] = useState("idle"); // idle | awaiting_down_text | sending | submitted
@@ -1408,6 +1437,17 @@ function getStyles(theme) {
       marginTop: 6,
       fontSize: 13,
       color: theme.muted,
+    },
+    toolsUsed: {
+      display: "flex",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 5,
+      marginTop: 8,
+      fontSize: 11.5,
+      letterSpacing: 0.2,
+      color: theme.muted,
+      opacity: 0.85,
     },
     bubbleError: {
       display: "flex",
