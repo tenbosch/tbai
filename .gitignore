@@ -34,5 +34,8 @@ cloudflare/*.exe
 # Local agent/editor settings
 .claude/settings.local.json
 
+# Claude Code project instructions — kept local, not published
+CLAUDE.md
+
 # Process tracking
 .tbai.pids.json
