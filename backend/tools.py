@@ -19,6 +19,28 @@ class ToolContext:
     user_id: int
     user_name: str
     db_connect: Callable  # async context-manager factory (db.connect)
+    # Tools that actually ran this turn, in call order — see record_tool_use().
+    tools_used: list[dict] = field(default_factory=list)
+
+
+# Special-cased below because the interesting fact about a load_skill call is
+# *which* skill it loaded, not that it was called.
+_LOAD_SKILL_TOOL = "load_skill"
+
+
+def record_tool_use(ctx: ToolContext, name: str, args: dict) -> None:
+    """Note that a tool ran, for the per-message record persisted by main.py.
+
+    Both agent loops funnel their dispatch through here (agent_logic._execute_tool
+    and providers._run_tool), because the tool_call/tool-result messages they build
+    live only in an in-memory list that is discarded when the turn ends. Without a
+    durable record, a later turn asking "did you use the skill?" has no evidence to
+    answer from — and the model confabulates rather than admitting it can't tell.
+    """
+    detail = None
+    if name == _LOAD_SKILL_TOOL:
+        detail = (args.get("name") or "").strip() or None
+    ctx.tools_used.append({"name": name, "detail": detail})
 
 
 @dataclass

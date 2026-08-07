@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from tools import ToolContext, register_tool
+from tools import TOOL_REGISTRY, ToolContext, register_tool
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,14 @@ MAX_NAME_LEN = 64
 MAX_SLUG_LEN = 48
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,%d}$" % (MAX_SLUG_LEN - 1))
 RESERVED_SLUGS = {"readme"}  # `readme.md` is the authoring guide, not a skill
+
+# The fixed part of load_skill's tool description. _refresh_load_skill_schema()
+# appends the live skill names to it, rebuilding from this constant every time so
+# repeated reloads can't accumulate names that have since been deleted.
+_LOAD_SKILL_BASE_DESCRIPTION = (
+    "Load the full instructions for one of the skills listed in your system prompt. "
+    "Call this before attempting a task that a skill covers."
+)
 
 
 @dataclass
@@ -146,6 +154,10 @@ def load_skills() -> list[Skill]:
     SKILL_INDEX.update(index)
     LOAD_ERRORS.clear()
     LOAD_ERRORS.extend(errors)
+    # Every path that changes the index comes through here — startup, the admin
+    # reload endpoint, and each authoring mutation — so this is the one place the
+    # advertised skill names need refreshing.
+    _refresh_load_skill_schema()
     logger.info("loaded %d skill(s), %d error(s)", len(index), len(errors))
     return list(index.values())
 
@@ -155,6 +167,31 @@ def enabled_skills() -> list[Skill]:
     return [s for s in SKILL_INDEX.values() if s.enabled]
 
 
+def _refresh_load_skill_schema() -> None:
+    """Advertise the live skill names on load_skill's own tool schema.
+
+    The system prompt already lists the skills, but tool schemas are re-sent on
+    every round and a small local model weights them more heavily than a system
+    prompt it saw once — so a movie question would reach for `web_search`, which
+    is right there in the tool list, over a skill mentioned only in the preamble.
+    Naming the skills here (and pinning `name` to an enum) puts them in the same
+    place the competing tool lives.
+    """
+    tool = TOOL_REGISTRY.get("load_skill")
+    if tool is None:  # the decorator runs at import, so this is defensive only
+        return
+    names = [s.name for s in enabled_skills()]
+    fn = tool.schema["function"]
+    fn["description"] = _LOAD_SKILL_BASE_DESCRIPTION + (
+        f" Available skills: {', '.join(names)}." if names else ""
+    )
+    name_schema = fn["parameters"]["properties"]["name"]
+    if names:
+        name_schema["enum"] = names
+    else:
+        name_schema.pop("enum", None)  # an empty enum matches nothing at all
+
+
 def skills_prompt_block() -> str | None:
     """The system-prompt fragment listing available skills, or None if there are none."""
     active = enabled_skills()
@@ -162,20 +199,21 @@ def skills_prompt_block() -> str | None:
         return None
     lines = "\n".join(f"- {s.name}: {s.description}" for s in active)
     return (
-        "The following skills are available. Each one is a set of instructions for a "
-        "specific kind of task. When a request matches a skill, call load_skill with its "
-        "exact name FIRST, then follow the instructions it returns. Do not guess at a "
-        "skill's contents from its description alone.\n"
+        "Before answering anything, check whether one of these skills covers the "
+        "request. Each one is a set of instructions for a specific kind of task. If a "
+        "skill matches, call load_skill with its exact name FIRST — before any other "
+        "tool — and then follow the instructions it returns, including which tools it "
+        "tells you to use. Do not guess at a skill's contents from its description "
+        "alone, and do not answer from memory when a skill applies.\n"
         f"{lines}"
     )
 
 
 @register_tool(
     "load_skill",
-    description=(
-        "Load the full instructions for one of the skills listed in your system prompt. "
-        "Call this before attempting a task that a skill covers."
-    ),
+    # _refresh_load_skill_schema() rewrites this from the same constant on every
+    # load_skills(), appending the names that actually exist.
+    description=_LOAD_SKILL_BASE_DESCRIPTION,
     parameters={
         "type": "object",
         "properties": {
