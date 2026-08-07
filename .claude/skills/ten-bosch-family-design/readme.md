@@ -5,10 +5,10 @@ calendar, a chore tracker, a family hub, whatever comes next. There is no
 company behind this; the "brand" is the family itself, and its visual language
 comes straight from the family home.
 
-**Source material:** one photo of the ten Bosch house (`uploads/home.png`,
-also at `assets/home-photo.jpg`) — a brick colonial with off-white millwork,
-forest-green shutters, a dark wood door, and an arched Palladian window over
-the entry. No existing logo, codebase, or Figma file was provided; everything
+**Source material:** a photo of the family home (kept locally, not published in
+this repo). The palette is drawn from it: warm brick, off-white millwork,
+forest-green accents, and dark wood, with an arch motif taken from the
+entryway. No existing logo, codebase, or Figma file was provided; everything
 here is built from scratch to match that photo and the family's direction
 (name style: "ten Bosch Family"; vibe: modern layout with warm materials/colors).
 
@@ -24,7 +24,6 @@ Figma), point future runs at it and this file should be reconciled against it.
 - `tokens/colors.css` — off-white / brown / green ramps + semantic aliases
 - `tokens/typography.css` — Lora + Public Sans + IBM Plex Mono, type scale
 - `tokens/spacing.css` — spacing scale, radii (incl. the arch motif), shadows, motion
-- `assets/home-photo.jpg` — the source house photo, cropped for use as a hero image
 - `guidelines/` — 14 foundation specimen cards (Design System tab → Colors, Type, Spacing, Brand groups)
 - `components/` — 13 primitives, each `<Name>.jsx` + `<Name>.d.ts` + `<Name>.prompt.md`
   - `forms/` — Button, Input, Select, Checkbox, Radio, Switch

@@ -37,5 +37,8 @@ cloudflare/*.exe
 # Claude Code project instructions — kept local, not published
 CLAUDE.md
 
+# Family photo the design system was derived from — kept local, not published
+.claude/skills/ten-bosch-family-design/assets/
+
 # Process tracking
 .tbai.pids.json
