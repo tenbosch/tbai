@@ -105,7 +105,12 @@ export default function App() {
   // Post navigation / admin / model-list state to the toolbar.
   useEffect(() => {
     if (!isAuthenticated) return;
-    postDesktopState({ page, isAdmin: !!user?.is_admin, models: dtModels });
+    postDesktopState({
+      page,
+      isAdmin: !!user?.is_admin,
+      models: dtModels,
+      themeMode: user?.theme_mode || "light",
+    });
   }, [isAuthenticated, page, user, dtModels]);
 
   // Post the current model separately so page changes never clobber it with a stale

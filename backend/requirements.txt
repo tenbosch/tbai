@@ -8,5 +8,8 @@ python-jose[cryptography]==3.5.0
 python-dotenv==1.2.2
 slowapi==0.1.10
 anthropic
+openai                # OpenAI-compatible client — Databricks AI Gateway, backend/databricks_provider.py
+mcp>=1.9              # MCP client (stdio transport) — backend/mcp_client.py
+pyyaml==6.0.3         # skill markdown frontmatter — backend/skills.py
 python-multipart
 email-validator==2.3.0

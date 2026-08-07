@@ -1,0 +1,54 @@
+/* ============================================================
+   tBai — semantic theme layer (ten Bosch Family Design System)
+   Maps the raw DS ramps (tokens/colors.css) onto app-level
+   --tbai-* variables, switched by [data-theme] on <html>.
+   The DS ships one warm-light palette; the dark block is this
+   app's warm brown-based extension.
+   ============================================================ */
+
+:root,
+[data-theme="light"] {
+  --tbai-bg: var(--color-bg);
+  --tbai-header-bg: var(--color-surface);
+  --tbai-surface: var(--color-surface);
+  --tbai-surface-warm: var(--color-surface-warm);
+  --tbai-surface-alt: var(--paper-100);
+  --tbai-border: var(--color-border);
+  --tbai-border-strong: var(--color-border-strong);
+  --tbai-text: var(--color-text-primary);
+  --tbai-subtext: var(--color-text-secondary);
+  --tbai-muted: var(--color-text-muted);
+  --tbai-accent: var(--color-primary);
+  --tbai-accent-hover: var(--color-primary-hover);
+  --tbai-accent-soft: var(--color-primary-soft);
+  --tbai-on-accent: var(--color-text-on-primary);
+  --tbai-assistant-bubble: var(--color-surface);
+  --tbai-error: var(--color-danger);
+  --tbai-error-soft: var(--color-danger-soft);
+  --tbai-warn: var(--color-warning);
+  --tbai-warn-soft: var(--color-warning-soft);
+  --tbai-scrim: rgba(34, 23, 18, 0.4);
+}
+
+[data-theme="dark"] {
+  --tbai-bg: var(--brown-900);
+  --tbai-header-bg: var(--brown-800);
+  --tbai-surface: var(--brown-800);
+  --tbai-surface-warm: var(--brown-700);
+  --tbai-surface-alt: var(--brown-700);
+  --tbai-border: var(--color-border-on-dark);
+  --tbai-border-strong: rgba(251, 248, 242, 0.28);
+  --tbai-text: var(--paper-0);
+  --tbai-subtext: var(--paper-200);
+  --tbai-muted: var(--brown-200);
+  --tbai-accent: var(--green-300);
+  --tbai-accent-hover: var(--green-200);
+  --tbai-accent-soft: rgba(138, 163, 116, 0.2);
+  --tbai-on-accent: var(--green-800);
+  --tbai-assistant-bubble: var(--brown-700);
+  --tbai-error: #c97a5c;
+  --tbai-error-soft: rgba(162, 74, 46, 0.28);
+  --tbai-warn: var(--amber-500);
+  --tbai-warn-soft: rgba(184, 122, 42, 0.28);
+  --tbai-scrim: rgba(0, 0, 0, 0.55);
+}

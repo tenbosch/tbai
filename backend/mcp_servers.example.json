@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Copy to mcp_servers.json (gitignored) and edit. Each entry is a local MCP",
+    "server started over stdio. Restart the backend, or hit Reload on the MCP card",
+    "in the admin panel, to pick up changes.",
+    "",
+    "Fields: name (unique, used in the tool names as mcp__<name>__<tool>),",
+    "command, args, optional env / cwd / enabled (default true), and an optional",
+    "'tools' allow-list to expose only some of the server's tools. Each server may",
+    "contribute at most 24 tools (MAX_TOOLS_PER_SERVER in backend/mcp_client.py).",
+    "",
+    "On Windows, 'npx' works — the MCP SDK resolves it to npx.cmd."
+  ],
+  "servers": [
+    {
+      "name": "filesystem",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/you/Documents/shared"],
+      "env": {}
+    },
+    {
+      "name": "memory",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "tools": ["create_entities", "search_nodes", "read_graph"]
+    }
+  ]
+}

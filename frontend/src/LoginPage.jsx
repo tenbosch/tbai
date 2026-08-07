@@ -22,12 +22,13 @@ export default function LoginPage() {
         <div style={styles.logoWrap}>
           <TbaiLogo />
         </div>
-        <p style={styles.tagline}>Your local AI chat companion</p>
+        <h1 style={styles.heading}>Welcome home.</h1>
+        <p style={styles.tagline}>Your family's own AI assistant. Sign in to get started.</p>
         <div style={styles.buttonWrap}>
           <GoogleLogin
             onSuccess={handleSuccess}
-            onError={() => setError("Google sign-in failed. Please try again.")}
-            theme="filled_black"
+            onError={() => setError("Couldn't sign in with Google — try again?")}
+            theme="outline"
             shape="pill"
             size="large"
             use_fedcm_for_button={false}
@@ -39,44 +40,60 @@ export default function LoginPage() {
   );
 }
 
+// Rendered before login, when the theme defaults to light. Colors reference the
+// --tbai-* variables so the page picks up the design-system palette.
 const styles = {
   root: {
-    background: "#1e1e2e",
+    background: "var(--tbai-bg)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    fontFamily: "var(--font-body)",
+    padding: 16,
   },
   card: {
-    background: "#181825",
-    border: "1px solid #313244",
+    background: "var(--tbai-surface)",
+    border: "1px solid var(--tbai-border)",
     borderRadius: 16,
-    padding: "40px 32px",
+    padding: "44px 32px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 20,
-    width: "min(400px, calc(100vw - 48px))",
+    gap: 14,
+    width: "min(420px, calc(100vw - 48px))",
     overflow: "hidden",
+    boxShadow: "0 2px 6px rgba(var(--shadow-color), 0.09)",
   },
   logoWrap: {
     marginBottom: 4,
   },
-  tagline: {
-    color: "#6c7086",
-    fontSize: 14,
+  heading: {
     margin: 0,
+    fontFamily: "var(--font-display)",
+    fontWeight: 700,
+    fontSize: 28,
+    letterSpacing: "-0.01em",
+    color: "var(--tbai-text)",
     textAlign: "center",
   },
+  tagline: {
+    color: "var(--tbai-subtext)",
+    fontSize: 16,
+    margin: 0,
+    textAlign: "center",
+    lineHeight: 1.5,
+    maxWidth: 300,
+  },
   buttonWrap: {
-    marginTop: 8,
+    marginTop: 10,
     maxWidth: "100%",
     overflow: "hidden",
   },
   error: {
-    color: "#f38ba8",
+    color: "var(--tbai-error)",
     fontSize: 13,
     margin: 0,
     textAlign: "center",
-    maxWidth: 280,
+    maxWidth: 300,
   },
 };

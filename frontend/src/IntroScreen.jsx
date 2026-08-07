@@ -1,5 +1,4 @@
 import { Component, useEffect, useRef, useState } from "react";
-import { animate, createScope, stagger } from "animejs";
 import TbaiLogo from "./TbaiLogo";
 
 // "Designed by Jeff and Claude, powered by Gemma from Google, and brought to
@@ -8,19 +7,22 @@ import TbaiLogo from "./TbaiLogo";
 const SENTENCE =
   "Designed by Jeff and Claude, powered by Gemma from Google, and brought to you by CloudFlare directly from Jeffs Home Computer!";
 
-const BRAND_COLORS = {
-  Claude: "#cba6f7",
-  Gemma: "#89b4fa",
-  Google: "#89b4fa",
-  CloudFlare: "#f6821f",
-};
+// The one brand color (forest green) picks out the names — no rainbow of
+// external brand colors, per the design system's single-accent rule.
+const EMPHASIS = new Set(["Jeff", "Jeffs", "Claude", "Gemma", "Google", "CloudFlare"]);
 
 const WORDS = SENTENCE.split(" ").map((word, i) => {
   const clean = word.replace(/[.,!]/g, "");
-  return { key: `${clean}-${i}`, text: word, color: BRAND_COLORS[clean] || "#f4f6fb" };
+  return { key: `${clean}-${i}`, text: word, emphasis: EMPHASIS.has(clean) };
 });
 
 const SESSION_KEY = "tbai_intro_shown";
+
+// Per-word cascade timing — mirrors the old animejs stagger (600ms start, 80ms
+// step). Delays are applied inline; the keyframes themselves live in index.html.
+const WORD_START_MS = 600;
+const WORD_STEP_MS = 80;
+const FADE_OUT_MS = 700;
 
 // Some mobile browser privacy modes throw on sessionStorage access instead
 // of just being unavailable, so every call here is guarded.
@@ -44,93 +46,73 @@ function IntroScreenInner() {
   const [visible, setVisible] = useState(
     () => typeof window !== "undefined" && !getIntroSeen()
   );
+  const [leaving, setLeaving] = useState(false);
   const [reduceMotion] = useState(
     () =>
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
-  const rootRef = useRef(null);
-  const scopeRef = useRef(null);
-  const finishRef = useRef(null);
   const finishedRef = useRef(false);
+  const timerRef = useRef(null);
+
+  // Dismiss = fade the overlay out via a CSS opacity transition, then unmount.
+  // Everything here is plain state + a setTimeout — no animation library — so
+  // the overlay can never get stuck on-screen waiting for an animation callback
+  // that a mobile browser failed to fire.
+  const finish = () => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    setIntroSeen();
+    setLeaving(true);
+    timerRef.current = window.setTimeout(
+      () => setVisible(false),
+      reduceMotion ? 200 : FADE_OUT_MS
+    );
+  };
 
   useEffect(() => {
     if (!visible) return;
-
-    finishedRef.current = false;
-
-    const finish = () => {
-      if (finishedRef.current) return;
-      finishedRef.current = true;
-      setIntroSeen();
-      animate(rootRef.current, {
-        opacity: [1, 0],
-        duration: 700,
-        ease: "outQuad",
-        onComplete: () => setVisible(false),
-      });
-    };
-    finishRef.current = finish;
-
-    scopeRef.current = createScope({ root: rootRef }).add(() => {
-      if (reduceMotion) {
-        animate(".intro-logo, .intro-word", {
-          opacity: [0, 1],
-          duration: 200,
-          ease: "linear",
-        });
-        return;
-      }
-
-      animate(".intro-logo", {
-        opacity: [0, 1],
-        scale: [0.85, 1],
-        duration: 900,
-        ease: "outExpo",
-      });
-
-      animate(".intro-word", {
-        opacity: [0, 1],
-        translateY: [16, 0],
-        duration: 840,
-        delay: stagger(80, { start: 600 }),
-        ease: "outQuad",
-      });
-    });
-
-    return () => scopeRef.current?.revert();
-  }, [visible, reduceMotion]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const onKeyDown = () => finishRef.current?.();
+    const onKeyDown = () => finish();
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+    // finish only reads refs/immutable state, so a stable [visible] dep is fine
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   if (!visible) return null;
 
   return (
     <div
-      ref={rootRef}
       className="tbai-vh"
-      onClick={() => finishRef.current?.()}
-      style={styles.root}
+      onClick={finish}
+      style={{
+        ...styles.root,
+        opacity: leaving ? 0 : 1,
+        transition: `opacity ${reduceMotion ? 200 : FADE_OUT_MS}ms ease`,
+      }}
       role="button"
       aria-label="Skip intro"
       tabIndex={-1}
     >
-      <div className="intro-glow" style={styles.glow} aria-hidden="true" />
       <div style={styles.content}>
         <div className="intro-logo" style={styles.logoWrap}>
           <TbaiLogo showTagline={false} />
         </div>
         <p style={styles.words}>
-          {WORDS.map((w) => (
+          {WORDS.map((w, i) => (
             <span
               key={w.key}
               className="intro-word"
-              style={{ ...styles.word, color: w.color }}
+              style={{
+                ...styles.word,
+                ...(w.emphasis ? styles.wordEmphasis : {}),
+                animationDelay: reduceMotion
+                  ? "0ms"
+                  : `${WORD_START_MS + i * WORD_STEP_MS}ms`,
+              }}
             >
               {w.text}
             </span>
@@ -175,23 +157,12 @@ const styles = {
     position: "fixed",
     inset: 0,
     zIndex: 9999,
-    background: "#1e1e2e",
+    background: "var(--tbai-bg, #FBF8F2)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
     cursor: "pointer",
-  },
-  glow: {
-    position: "absolute",
-    width: "min(140vw, 1100px)",
-    height: "min(140vw, 1100px)",
-    borderRadius: "50%",
-    background:
-      "conic-gradient(from 0deg, #cba6f7, #89b4fa, #f6821f, #cba6f7)",
-    filter: "blur(90px)",
-    opacity: 0.3,
-    animation: "intro-glow-pulse 2.4s ease-in-out infinite alternate",
   },
   content: {
     position: "relative",
@@ -202,31 +173,33 @@ const styles = {
     padding: "0 24px",
     maxWidth: "min(640px, 92vw)",
   },
-  logoWrap: {
-    opacity: 0,
-  },
+  logoWrap: {},
   words: {
     margin: 0,
     display: "flex",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: "0.3em 0.5em",
-    fontFamily: "'Space Grotesk', ui-sans-serif, system-ui, sans-serif",
-    fontSize: "clamp(1.05rem, 4vw, 1.7rem)",
+    gap: "0.2em 0.4em",
+    fontFamily: "var(--font-display, Georgia, serif)",
+    fontSize: "clamp(1.1rem, 4vw, 1.8rem)",
     lineHeight: 1.5,
     textAlign: "center",
     fontWeight: 500,
+    color: "var(--tbai-text, #332317)",
   },
   word: {
     display: "inline-block",
-    opacity: 0,
+  },
+  wordEmphasis: {
+    color: "var(--tbai-accent, #3F5A34)",
+    fontWeight: 600,
   },
   hint: {
     margin: 0,
-    color: "#8790a6",
-    fontFamily: "ui-sans-serif, system-ui, sans-serif",
-    fontSize: "clamp(0.75rem, 2.4vw, 0.9rem)",
-    letterSpacing: "0.04em",
+    color: "var(--tbai-muted, #948374)",
+    fontFamily: "var(--font-body, sans-serif)",
+    fontSize: "clamp(0.75rem, 2.4vw, 0.85rem)",
+    letterSpacing: "0.09em",
     textTransform: "uppercase",
   },
 };

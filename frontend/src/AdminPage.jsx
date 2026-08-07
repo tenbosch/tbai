@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import SkillEditor from "./SkillEditor";
 import TbaiLogo from "./TbaiLogo";
 import useAuthFetch from "./useAuthFetch";
 
@@ -14,6 +15,19 @@ export default function AdminPage({ onBack }) {
   const [activityLog, setActivityLog] = useState([]);
   const [activityPage, setActivityPage] = useState(1);
   const ACTIVITY_PAGE_SIZE = 15;
+  const [skills, setSkills] = useState({ skills: [], load_errors: [] });
+  const [mcpServers, setMcpServers] = useState([]);
+  const [reloading, setReloading] = useState(null); // "skills" | "mcp" | null
+  // Null until a fetch settles. Without this, "the backend is down" renders
+  // identically to "you haven't defined any skills yet", which is misleading.
+  const [skillsFetchError, setSkillsFetchError] = useState(null);
+  const [mcpFetchError, setMcpFetchError] = useState(null);
+  // `null` is a valid editor target (it means "create"), so openness needs its
+  // own flag rather than being inferred from the slug.
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorSlug, setEditorSlug] = useState(null);
+  const [busySlug, setBusySlug] = useState(null);      // a row mid-request
+  const [confirmSlug, setConfirmSlug] = useState(null); // a delete awaiting its second click
 
   const loadEmails = useCallback(async () => {
     try {
@@ -34,12 +48,58 @@ export default function AdminPage({ onBack }) {
     }
   }, [authFetch]);
 
+  // Skills and MCP servers both live on disk (backend/skills/*.md and
+  // backend/mcp_servers.json). Reload makes the backend re-read the files
+  // without a restart; skills can additionally be authored from here, since a
+  // SKILL.md is inert markdown.
+  const loadSkills = useCallback(async (reload = false) => {
+    if (reload) setReloading("skills");
+    try {
+      const res = reload
+        ? await authFetch(`${API}/admin/skills/reload`, { method: "POST" })
+        : await authFetch(`${API}/admin/skills`);
+      setSkills(await res.json());
+      setSkillsFetchError(null);
+    } catch (err) {
+      console.error("Failed to load skills:", err);
+      setSkillsFetchError(
+        err.status
+          ? `Request failed (HTTP ${err.status}).`
+          : "Couldn't reach the backend — is it running on port 8000?"
+      );
+    } finally {
+      if (reload) setReloading(null);
+    }
+  }, [authFetch]);
+
+  const loadMcp = useCallback(async (reload = false) => {
+    if (reload) setReloading("mcp");
+    try {
+      const res = reload
+        ? await authFetch(`${API}/admin/mcp-servers/reload`, { method: "POST" })
+        : await authFetch(`${API}/admin/mcp-servers`);
+      setMcpServers((await res.json()).servers || []);
+      setMcpFetchError(null);
+    } catch (err) {
+      console.error("Failed to load MCP servers:", err);
+      setMcpFetchError(
+        err.status
+          ? `Request failed (HTTP ${err.status}).`
+          : "Couldn't reach the backend — is it running on port 8000?"
+      );
+    } finally {
+      if (reload) setReloading(null);
+    }
+  }, [authFetch]);
+
   const didInitRef = useRef(false);
   useEffect(() => {
     if (didInitRef.current) return;
     didInitRef.current = true;
     loadEmails();
     loadEvents();
+    loadSkills();
+    loadMcp();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAdd = async () => {
@@ -86,6 +146,45 @@ export default function AdminPage({ onBack }) {
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleAdd();
+  };
+
+  const openEditor = (slug) => {
+    setEditorSlug(slug);
+    setEditorOpen(true);
+    setConfirmSlug(null);
+  };
+
+  // Every skill mutation answers with the same payload GET /admin/skills does,
+  // so one round-trip both applies the change and refreshes the list.
+  const mutateSkill = async (slug, request) => {
+    setBusySlug(slug);
+    setSkillsFetchError(null);
+    try {
+      const res = await authFetch(`${API}/admin/skills/${encodeURIComponent(slug)}${request.suffix || ""}`, {
+        method: request.method,
+        ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+      });
+      setSkills(await res.json());
+    } catch (err) {
+      console.error("Skill update failed:", err);
+      setSkillsFetchError(err.message || "Failed to update the skill.");
+    } finally {
+      setBusySlug(null);
+      setConfirmSlug(null);
+    }
+  };
+
+  const handleToggleSkill = (slug, enabled) =>
+    mutateSkill(slug, { method: "PATCH", suffix: "/enabled", body: { enabled } });
+
+  // Two-step in place of window.confirm: a browser modal here would sit on top of
+  // the editor modal, and the first click already tells us the intent.
+  const handleDeleteSkill = (slug) => {
+    if (confirmSlug !== slug) {
+      setConfirmSlug(slug);
+      return;
+    }
+    mutateSkill(slug, { method: "DELETE" });
   };
 
   return (
@@ -153,6 +252,156 @@ export default function AdminPage({ onBack }) {
                   >
                     ×
                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <div>
+              <h2 style={styles.heading}>Skills</h2>
+              <p style={styles.sub}>
+                Markdown files in <code style={styles.code}>backend/skills/</code>. Only the
+                description is in the system prompt; tBai loads the rest on demand.
+              </p>
+            </div>
+            <div style={styles.headerBtns}>
+              <button style={styles.addBtn} onClick={() => openEditor(null)}>
+                + New skill
+              </button>
+              <button
+                style={styles.refreshBtn}
+                onClick={() => loadSkills(true)}
+                disabled={reloading === "skills"}
+              >
+                {reloading === "skills" ? "Reloading…" : "Reload"}
+              </button>
+            </div>
+          </div>
+
+          {skillsFetchError ? (
+            <p style={styles.fetchError}>{skillsFetchError}</p>
+          ) : (
+            skills.skills.length === 0 &&
+            skills.load_errors.length === 0 && (
+              <p style={styles.empty}>No skills defined yet.</p>
+            )
+          )}
+
+          <div style={styles.list}>
+            {skills.skills.map((s) => (
+              <div
+                key={s.slug}
+                style={s.enabled ? styles.listItem : { ...styles.listItem, ...styles.disabledRow }}
+              >
+                <div style={styles.listLeft}>
+                  <span style={styles.listEmail}>{s.name}</span>
+                  <span style={styles.listName}>{s.description}</span>
+                  <span style={styles.neverLogged}>
+                    {s.path} · {s.chars.toLocaleString()} chars
+                  </span>
+                </div>
+                <div style={styles.listRight}>
+                  {!s.enabled && <span style={badgeStyle(DISABLED_META)}>disabled</span>}
+                  {s.truncated && <span style={styles.warnBadge}>truncated</span>}
+                  <button style={styles.makeAdminBtn} onClick={() => openEditor(s.slug)}>
+                    Edit
+                  </button>
+                  <button
+                    style={styles.makeAdminBtn}
+                    onClick={() => handleToggleSkill(s.slug, !s.enabled)}
+                    disabled={busySlug === s.slug}
+                  >
+                    {busySlug === s.slug ? "…" : s.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    style={styles.removeAdminBtn}
+                    onClick={() => handleDeleteSkill(s.slug)}
+                    onBlur={() => setConfirmSlug((c) => (c === s.slug ? null : c))}
+                    disabled={busySlug === s.slug}
+                  >
+                    {confirmSlug === s.slug ? "Confirm delete?" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {skills.load_errors.map((e) => (
+              <div key={e.path} style={{ ...styles.listItem, ...styles.errorItem }}>
+                <div style={styles.listLeft}>
+                  <span style={styles.listEmail}>{e.path}</span>
+                  <span style={styles.errorText}>{e.error}</span>
+                </div>
+                {e.slug && (
+                  <div style={styles.listRight}>
+                    <button style={styles.makeAdminBtn} onClick={() => openEditor(e.slug)}>
+                      Fix
+                    </button>
+                    <button
+                      style={styles.removeAdminBtn}
+                      onClick={() => handleDeleteSkill(e.slug)}
+                      onBlur={() => setConfirmSlug((c) => (c === e.slug ? null : c))}
+                      disabled={busySlug === e.slug}
+                    >
+                      {confirmSlug === e.slug ? "Confirm delete?" : "Delete"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <div>
+              <h2 style={styles.heading}>MCP Servers</h2>
+              <p style={styles.sub}>
+                Configured in <code style={styles.code}>backend/mcp_servers.json</code>.
+                Reloading restarts every server process.
+              </p>
+            </div>
+            <button
+              style={styles.refreshBtn}
+              onClick={() => loadMcp(true)}
+              disabled={reloading === "mcp"}
+            >
+              {reloading === "mcp" ? "Reloading…" : "Reload"}
+            </button>
+          </div>
+
+          {mcpFetchError ? (
+            <p style={styles.fetchError}>{mcpFetchError}</p>
+          ) : (
+            mcpServers.length === 0 && (
+              <p style={styles.empty}>
+                No MCP servers configured. Copy{" "}
+                <code style={styles.code}>mcp_servers.example.json</code> to{" "}
+                <code style={styles.code}>mcp_servers.json</code> to add one.
+              </p>
+            )
+          )}
+
+          <div style={styles.list}>
+            {mcpServers.map((srv) => (
+              <div key={srv.name} style={styles.listItem}>
+                <div style={styles.listLeft}>
+                  <span style={styles.listEmail}>{srv.name}</span>
+                  {srv.error && <span style={styles.errorText}>{srv.error}</span>}
+                  {srv.tools.length > 0 && (
+                    <span style={styles.listName}>
+                      {srv.tools.map((t) => t.name).join(", ")}
+                    </span>
+                  )}
+                  {srv.skipped.length > 0 && (
+                    <span style={styles.neverLogged}>
+                      {srv.skipped.length} tool{srv.skipped.length === 1 ? "" : "s"} not exposed
+                    </span>
+                  )}
+                </div>
+                <div style={styles.listRight}>
+                  <span style={mcpBadgeStyle(srv.status)}>{srv.status}</span>
                 </div>
               </div>
             ))}
@@ -243,9 +492,20 @@ export default function AdminPage({ onBack }) {
           )}
         </div>
       </div>
+
+      {editorOpen && (
+        <SkillEditor
+          slug={editorSlug}
+          authFetch={authFetch}
+          onClose={() => setEditorOpen(false)}
+          onSaved={(payload) => { setSkills(payload); setSkillsFetchError(null); }}
+        />
+      )}
     </div>
   );
 }
+
+const DISABLED_META = { bg: "#e5e7eb", color: "#4b5563" };
 
 const EVENT_META = {
   login:             { label: "Logged in",       bg: "#d1fae5", color: "#065f46" },
@@ -255,6 +515,9 @@ const EVENT_META = {
   chat:              { label: "Chat message",     bg: "#f3e8ff", color: "#6b21a8" },
   feedback_positive: { label: "👍 Feedback",       bg: "#d1fae5", color: "#065f46" },
   feedback_negative: { label: "👎 Feedback",       bg: "#fee2e2", color: "#991b1b" },
+  skill_created:     { label: "Skill created",    bg: "#ccfbf1", color: "#115e59" },
+  skill_updated:     { label: "Skill updated",    bg: "#e0e7ff", color: "#3730a3" },
+  skill_deleted:     { label: "Skill deleted",    bg: "#fef3c7", color: "#92400e" },
 };
 
 function eventLabel(event) {
@@ -263,6 +526,21 @@ function eventLabel(event) {
 
 function eventBadgeStyle(event) {
   const meta = EVENT_META[event] ?? { bg: "#f3f4f6", color: "#374151" };
+  return badgeStyle(meta);
+}
+
+const MCP_STATUS_META = {
+  connected:  { bg: "#d1fae5", color: "#065f46" },
+  connecting: { bg: "#dbeafe", color: "#1e40af" },
+  failed:     { bg: "#fee2e2", color: "#991b1b" },
+  stopped:    { bg: "#fef3c7", color: "#92400e" },
+};
+
+function mcpBadgeStyle(status) {
+  return badgeStyle(MCP_STATUS_META[status] ?? { bg: "#f3f4f6", color: "#374151" });
+}
+
+function badgeStyle(meta) {
   return {
     display: "inline-block",
     padding: "2px 8px",
@@ -326,7 +604,18 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: 8,
+    flexWrap: "wrap",
     marginBottom: 4,
+  },
+  headerBtns: {
+    display: "flex",
+    gap: 8,
+    flexShrink: 0,
+  },
+  disabledRow: {
+    opacity: 0.6,
+    background: "#f3f4f6",
   },
   refreshBtn: {
     padding: "12px 16px",
@@ -496,6 +785,36 @@ const styles = {
     color: "#854d0e",
     fontWeight: 600,
     fontSize: 12,
+  },
+  warnBadge: {
+    display: "inline-block",
+    padding: "2px 8px",
+    borderRadius: 12,
+    background: "#fef3c7",
+    color: "#92400e",
+    fontWeight: 600,
+    fontSize: 12,
+  },
+  errorItem: {
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+  },
+  errorText: {
+    fontSize: 12,
+    color: "#b91c1c",
+    overflowWrap: "anywhere",
+  },
+  fetchError: {
+    fontSize: 13,
+    color: "#b91c1c",
+    margin: 0,
+  },
+  code: {
+    fontFamily: "monospace",
+    fontSize: "0.92em",
+    background: "#f3f4f6",
+    padding: "1px 4px",
+    borderRadius: 4,
   },
   makeAdminBtn: {
     padding: "11px 14px",

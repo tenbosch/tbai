@@ -1,0 +1,41 @@
+/* ============================================================
+   ten Bosch Family — Spacing, radius, shadow & motion tokens
+   ============================================================ */
+
+:root {
+  /* Spacing — 4px base scale */
+  --space-1: 0.25rem;  /* 4px */
+  --space-2: 0.5rem;   /* 8px */
+  --space-3: 0.75rem;  /* 12px */
+  --space-4: 1rem;     /* 16px */
+  --space-5: 1.5rem;   /* 24px */
+  --space-6: 2rem;     /* 32px */
+  --space-7: 3rem;     /* 48px */
+  --space-8: 4rem;     /* 64px */
+  --space-9: 6rem;     /* 96px */
+
+  /* Corner radius — architectural, restrained (brick + millwork, not "app blob") */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+  /* Arch radius — used ONLY on the top edge of feature/hero cards,
+     a nod to the house's arched window. Apply as
+     border-radius: var(--radius-arch) var(--radius-arch) var(--radius-md) var(--radius-md); */
+  --radius-arch: 64px;
+
+  /* Shadows — warm brown-tinted, soft, low-contrast (never pure black) */
+  --shadow-xs: 0 1px 2px rgba(var(--shadow-color), 0.08);
+  --shadow-sm: 0 2px 6px rgba(var(--shadow-color), 0.09);
+  --shadow-md: 0 6px 16px rgba(var(--shadow-color), 0.12);
+  --shadow-lg: 0 16px 32px rgba(var(--shadow-color), 0.16);
+  --shadow-inset: inset 0 1px 3px rgba(var(--shadow-color), 0.10);
+
+  /* Motion — gentle, homey. No bounce; settle like a closing door. */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --duration-fast: 120ms; /* @kind other */
+  --duration-base: 200ms; /* @kind other */
+  --duration-slow: 360ms; /* @kind other */
+}

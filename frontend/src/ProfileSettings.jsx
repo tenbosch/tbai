@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { useGoogleLogin } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
-import { THEME_MODES, ACCENTS } from "./themes";
+import { THEME_MODES } from "./themes";
 import useAuthFetch from "./useAuthFetch";
 
 const GOOGLE_SCOPES =
@@ -118,22 +119,13 @@ export default function ProfileSettings({ onClose }) {
     }
   };
 
-  const handleSetAccent = async (accent) => {
-    setError(null);
-    try {
-      await updateProfile({ theme_accent: accent });
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
   return (
     <div style={styles.backdrop} onClick={onClose}>
       <div style={styles.panel} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
-          <h3 style={styles.title}>Profile Settings</h3>
-          <button style={styles.closeBtn} onClick={onClose} title="Close">
-            ×
+          <h3 style={styles.title}>Profile settings</h3>
+          <button style={styles.closeBtn} onClick={onClose} title="Close" aria-label="Close">
+            <X size={20} strokeWidth={1.75} />
           </button>
         </div>
 
@@ -176,28 +168,10 @@ export default function ProfileSettings({ onClose }) {
         </div>
 
         <div style={styles.section}>
-          <label style={styles.label}>Accent color</label>
-          <div style={styles.swatchRow}>
-            {ACCENTS.map((a) => (
-              <button
-                key={a.id}
-                title={a.label}
-                style={{
-                  ...styles.swatch,
-                  background: a.swatch,
-                  ...(user?.theme_accent === a.id ? styles.swatchActive : {}),
-                }}
-                onClick={() => handleSetAccent(a.id)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div style={styles.section}>
           <label style={styles.label}>Google services</label>
           {googleStatus?.connected ? (
             <div style={styles.row}>
-              <span style={styles.googleConnected}>✓ Connected — calendar, email &amp; Drive (read-only)</span>
+              <span style={styles.googleConnected}>Connected — calendar, email &amp; Drive (read-only)</span>
               <button style={styles.googleDisconnectBtn} onClick={disconnectGoogle} disabled={googleBusy}>
                 {googleBusy ? "…" : "Disconnect"}
               </button>
@@ -263,7 +237,7 @@ export default function ProfileSettings({ onClose }) {
                     title="Forget this"
                     aria-label={`Forget "${f.fact}"`}
                   >
-                    ×
+                    <X size={16} strokeWidth={1.75} />
                   </button>
                 </div>
               ))}
@@ -283,7 +257,7 @@ function getStyles(theme) {
     backdrop: {
       position: "fixed",
       inset: 0,
-      background: "rgba(0,0,0,0.5)",
+      background: theme.scrim,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -301,7 +275,7 @@ function getStyles(theme) {
       display: "flex",
       flexDirection: "column",
       gap: 18,
-      boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+      boxShadow: "0 16px 32px rgba(var(--shadow-color), 0.16)",
     },
     header: {
       display: "flex",
@@ -310,14 +284,15 @@ function getStyles(theme) {
     },
     title: {
       margin: 0,
-      fontSize: 16,
+      fontFamily: theme.fontDisplay,
+      fontWeight: 600,
+      fontSize: 22,
       color: theme.text,
     },
     closeBtn: {
       background: "none",
       border: "none",
       color: theme.muted,
-      fontSize: 22,
       lineHeight: 1,
       cursor: "pointer",
       width: 44,
@@ -340,13 +315,13 @@ function getStyles(theme) {
       letterSpacing: "0.04em",
     },
     input: {
-      padding: "8px 10px",
-      borderRadius: 8,
+      padding: "10px 12px",
+      borderRadius: 10,
       border: `1px solid ${theme.border}`,
       background: theme.bg,
       color: theme.text,
       fontSize: 14,
-      fontFamily: "inherit",
+      fontFamily: theme.fontBody,
     },
     row: {
       display: "flex",
@@ -356,10 +331,11 @@ function getStyles(theme) {
     saveBtn: {
       padding: "12px 16px",
       minHeight: 44,
-      borderRadius: 8,
-      border: "none",
+      borderRadius: 10,
+      border: "1px solid transparent",
       background: theme.accent,
       color: theme.userBubbleText,
+      fontFamily: theme.fontBody,
       fontWeight: 600,
       fontSize: 13,
       cursor: "pointer",
@@ -376,33 +352,18 @@ function getStyles(theme) {
       flex: 1,
       padding: "13px 10px",
       minHeight: 44,
-      borderRadius: 8,
+      borderRadius: 10,
       border: `1px solid ${theme.border}`,
       background: "none",
       color: theme.text,
+      fontFamily: theme.fontBody,
       fontSize: 13,
       cursor: "pointer",
     },
     modeBtnActive: {
-      background: theme.overlay,
+      background: theme.accentSoft,
       border: `1px solid ${theme.accent}`,
       fontWeight: 600,
-    },
-    swatchRow: {
-      display: "flex",
-      gap: 14,
-    },
-    swatch: {
-      width: 44,
-      height: 44,
-      borderRadius: "50%",
-      border: `2px solid ${theme.border}`,
-      cursor: "pointer",
-      padding: 0,
-    },
-    swatchActive: {
-      border: `2px solid ${theme.text}`,
-      boxShadow: `0 0 0 2px ${theme.bg}, 0 0 0 4px ${theme.text}`,
     },
     error: {
       color: theme.error,
@@ -453,10 +414,12 @@ function getStyles(theme) {
       flexShrink: 0,
     },
     factDeleteBtn: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       background: "none",
       border: "none",
       color: theme.muted,
-      fontSize: 18,
       lineHeight: 1,
       cursor: "pointer",
       padding: "4px 6px",

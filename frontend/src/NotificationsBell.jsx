@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Bell, ClipboardList, AlarmClock, X } from "lucide-react";
 import { useTheme } from "./ThemeContext";
 import useAuthFetch from "./useAuthFetch";
 import { onDesktopCommand, postDesktopState } from "./desktopBridge";
@@ -77,7 +78,7 @@ export default function NotificationsBell() {
         aria-expanded={open}
         title="Notifications"
       >
-        🔔
+        <Bell size={19} strokeWidth={1.75} />
         {items.length > 0 && <span style={styles.badge}>{items.length}</span>}
       </button>
 
@@ -88,8 +89,12 @@ export default function NotificationsBell() {
             <div key={n.id} style={styles.item}>
               <div style={styles.itemMain}>
                 <div style={styles.itemTitle}>
-                  {n.kind === "briefing" ? "📋 " : "⏰ "}
-                  {n.title}
+                  {n.kind === "briefing" ? (
+                    <ClipboardList size={15} strokeWidth={1.75} style={styles.itemIcon} />
+                  ) : (
+                    <AlarmClock size={15} strokeWidth={1.75} style={styles.itemIcon} />
+                  )}
+                  <span>{n.title}</span>
                 </div>
                 {n.body && <div style={styles.itemBody}>{n.body}</div>}
               </div>
@@ -99,7 +104,7 @@ export default function NotificationsBell() {
                 aria-label="Dismiss notification"
                 title="Dismiss"
               >
-                ×
+                <X size={16} strokeWidth={2} />
               </button>
             </div>
           ))}
@@ -121,7 +126,7 @@ function getStyles(theme) {
       position: "relative",
       background: "none",
       border: "none",
-      fontSize: 20,
+      color: theme.text,
       cursor: "pointer",
       width: 44,
       height: 44,
@@ -154,7 +159,7 @@ function getStyles(theme) {
       background: theme.surface,
       border: `1px solid ${theme.border}`,
       borderRadius: 10,
-      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+      boxShadow: "0 16px 32px rgba(var(--shadow-color), 0.16)",
       width: "min(320px, calc(100vw - 32px))",
       maxHeight: 400,
       overflowY: "auto",
@@ -175,11 +180,15 @@ function getStyles(theme) {
     },
     itemMain: { flex: 1, minWidth: 0 },
     itemTitle: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
       color: theme.text,
       fontSize: 13,
       fontWeight: 600,
       lineHeight: 1.4,
     },
+    itemIcon: { color: theme.accent, flexShrink: 0 },
     itemBody: {
       color: theme.muted,
       fontSize: 12,
@@ -187,10 +196,12 @@ function getStyles(theme) {
       marginTop: 2,
     },
     itemDismiss: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       background: "none",
       border: "none",
       color: theme.muted,
-      fontSize: 18,
       lineHeight: 1,
       cursor: "pointer",
       padding: "2px 6px",

@@ -1,8 +1,10 @@
 # tBai
 
-A self-hosted **family AI assistant**. Real-time, token-by-token streaming chat backed by a local LLM (**Ollama**), with an optional admin-only **Claude** cloud path. Multi-user via Google OAuth with an email whitelist. Beyond chat it has per-member memory, shared household lists, reminders with a daily briefing, opt-in read-only Google (Calendar/Gmail/Drive), image & text attachments, and browser voice I/O.
+A self-hosted **family AI assistant**. Real-time, token-by-token streaming chat backed by a local LLM (**Ollama**), with two optional remote paths: an admin-only **Claude** cloud path and **Databricks**-hosted models open to everyone. Multi-user via Google OAuth with an email whitelist. Beyond chat it has per-member memory, shared household lists, reminders with a daily briefing, opt-in read-only Google (Calendar/Gmail/Drive), image & text attachments, and browser voice I/O.
 
-Every layer streams: **Ollama / Anthropic → FastAPI → React**. Sessions are persisted per user in SQLite, and the app is exposed to external users over HTTPS via a Cloudflare Tunnel. An optional **Windows desktop app** wraps the whole thing in an always-on window.
+Every layer streams: **Ollama / Anthropic / Databricks → FastAPI → React**. Sessions are persisted per user in SQLite, and the app is exposed to external users over HTTPS via a Cloudflare Tunnel. An optional **Windows desktop app** wraps the whole thing in an always-on window.
+
+New capabilities can be added three ways without touching any agent loop: Python tools (`@register_tool`), markdown [**skills**](#skills), and [**MCP servers**](#mcp-servers).
 
 ---
 
@@ -11,7 +13,7 @@ Every layer streams: **Ollama / Anthropic → FastAPI → React**. Sessions are 
 **Chat & models**
 - **Streaming chat** — tokens appear as the model generates them (NDJSON stream end-to-end)
 - **Local LLM** — any model installed in Ollama (default: `gemma4`)
-- **Model picker** — switch models per chat; admins with an Anthropic key also get cloud **Claude** models (`claude-*`) in the picker; choice is remembered per user
+- **Model picker** — switch models per chat; choice is remembered per user. Alongside the local models it can show **Databricks**-hosted models (e.g. `databricks-kimi-k3`, available to every whitelisted user) and, for admins with an Anthropic key, cloud **Claude** models (`claude-*`)
 - **Iterative tool use** — the model can call tools across multiple rounds within one turn, streaming progress markers ("🔍 Searching the web…") as it goes
 - **Attachments** — attach images (for vision-capable local models) and text files to a message (≤10 MB each)
 - **Voice** — 🎙️ dictate your message (Web Speech) and 🔊 have replies read aloud (browser speech synthesis)
@@ -24,15 +26,19 @@ Every layer streams: **Ollama / Anthropic → FastAPI → React**. Sessions are 
 - **Reminders** — one-off or recurring (daily/weekly/monthly), delivered as in-app notifications
 - **Google (opt-in, read-only)** — search Gmail, list Calendar events, and search Drive once a member connects their account
 
+**Extending it**
+- **Skills** — procedural know-how written as plain markdown (`backend/skills/*/SKILL.md`), no Python. Only the one-line descriptions sit in the system prompt; the model pulls a full skill in with `load_skill` when it's relevant. Authored and toggled from the admin panel — see [Skills](#skills)
+- **MCP servers** — connect Model Context Protocol servers over stdio and their tools join the registry automatically as `mcp__<server>__<tool>` — see [MCP servers](#mcp-servers)
+
 **Personal & household**
 - **Per-user sessions** — private chat history organized into named sessions, with a "Your Chats" picker
 - **Daily briefing** — an optional once-a-day summary notification at an hour you choose
 - **Notifications** — in-app bell with unread badge for reminders and briefings
-- **Personalization** — custom display name, light/dark theme with five accent colors
+- **Personalization** — custom display name and a light/dark theme toggle, both saved per account
 
 **Access & operations**
 - **Google OAuth login** — no passwords; **email whitelist** enforced on every request (removal locks a user out immediately, not at token expiry)
-- **Admin panel** — manage the whitelist, assign/revoke admin roles, and view an activity log
+- **Admin panel** — manage the whitelist, assign/revoke admin roles, author and toggle skills, check MCP server status, and view an activity log
 - **Data retention** — a daily sweep prunes chats, attachment files, and logs older than 90 days so the DB stays bounded
 - **Public access via Cloudflare Tunnel** — HTTPS to external users without port forwarding
 - **Start/stop scripts** — one-command launch and shutdown of all four services
@@ -56,12 +62,17 @@ FastAPI (backend/main.py)
   ├── SQLite (chat_history.db, WAL) — users, sessions, messages, whitelist, activity log,
   │     user_facts, lists, reminders, notifications, google_credentials, attachments
   ├── scheduler.py — asyncio loop: delivers reminders + daily briefings, daily retention sweep
+  ├── skills.py — discovers backend/skills/*/SKILL.md; descriptions into the system prompt,
+  │     bodies fetched on demand by the load_skill tool
+  ├── mcp_client.py — one supervisor task per MCP server (stdio); registers their tools
   └── StreamingResponse → stream_agent_and_save() async generator (NDJSON)
         │
         ▼
-agent_logic.py stream_agent() — iterative tool loop (max 5 rounds); each round is one
+agent_logic.py stream_agent() — iterative tool loop (max 6 rounds); each round is one
   streaming model call with the tool schemas attached
   ├── claude-* model? → providers.py (admin-only Anthropic cloud loop, same events)
+  ├── Databricks model? → databricks_provider.py (OpenAI-compatible AI Gateway,
+  │     open to every whitelisted user, same events)
   ├── tools.py TOOL_REGISTRY — web_search, memory, lists, reminders, Google, …
   └── httpx stream → Ollama REST API (localhost:11434/api/chat)
 ```
@@ -117,7 +128,15 @@ CORS_ORIGIN=https://localhost:5173
 BRAVE_API_KEY=           # from https://brave.com/search/api/ (free tier), powers the web_search tool
 ANTHROPIC_API_KEY=       # optional — enables admin-only cloud Claude models in the picker
 ANTHROPIC_MODELS=        # optional — comma-separated cloud model ids (default: claude-opus-4-8)
+DATABRICKS_TOKEN=        # optional — Databricks workspace personal access token
+DATABRICKS_BASE_URL=     # optional — workspace AI Gateway base URL, must end at /v1
+DATABRICKS_MODELS=       # optional — comma-separated serving-endpoint names (default: databricks-kimi-k3)
 ```
+
+Databricks-hosted models (e.g. `databricks-kimi-k3`) are reached through the workspace AI
+Gateway's OpenAI-compatible API and appear in the model picker for **every whitelisted user**,
+unlike the admin-only Claude models. Set all three variables to enable them; leave
+`DATABRICKS_TOKEN` blank and they simply don't appear.
 
 **`frontend/.env`**
 ```
@@ -261,10 +280,45 @@ From **Settings → Connect Google services**, a member can grant read-only acce
 Click your avatar (top-right) → **Settings** to:
 
 - Set a **custom display name** (placeholder is your Google first name, used automatically if unset)
-- Choose **light or dark mode** and one of five accent colors (blue, mauve, green, pink, peach)
+- Switch between **light and dark mode** (also available as the ☾/☀ toggle in the page header)
 - Set your **daily briefing hour**, connect Google services, and manage remembered facts
 
 Settings are saved per account and applied on every device you sign into.
+
+Styling follows the **ten Bosch Family Design System**: one warm brand palette (brown surfaces, forest-green accent) in two modes, with no per-user accent choice. Colors live as CSS custom properties in `frontend/src/styles/` — `tokens/` holds the raw ramps, `theme.css` maps them onto the `--tbai-*` semantic layer in a light and a dark block. `ThemeContext` sets `data-theme` on `<html>` to activate one; components reference `var(--tbai-*)` rather than hex literals, so flipping the mode restyles the app at paint time. The full design system ships as a checked-in Claude Code skill under `.claude/skills/ten-bosch-family-design/`.
+
+---
+
+## Skills
+
+A **skill** is procedural knowledge written as markdown — no Python. Drop a folder under `backend/skills/` containing a `SKILL.md` with YAML frontmatter (`name`, `description`, optional `enabled`) and a body of instructions; a flat `backend/skills/foo.md` works too.
+
+Loading is **progressive**, which matters because local models have small context windows:
+
+1. Only `name: description` for each skill goes into the system prompt.
+2. When a request matches, the model calls the `load_skill` tool and gets the full body back as a tool result.
+
+Skills are editable from the admin panel (they're inert markdown, unlike an MCP command line): **+ New skill**, plus per-row Edit / Disable / Delete. `enabled: false` hides a skill from the model without deleting it. A malformed file never breaks startup — it's skipped, listed as a load error in the panel, and gets a **Fix** button. Bodies are capped at 8,000 characters. `POST /admin/skills/reload` re-reads the directory without a restart.
+
+See `backend/skills/README.md` for the authoring guide.
+
+---
+
+## MCP Servers
+
+tBai can connect to [Model Context Protocol](https://modelcontextprotocol.io) servers over **stdio** (each server runs as a local subprocess). Their tools are registered as `mcp__<server>__<tool>` and both agent loops pick them up with no code changes.
+
+Configure them in `backend/mcp_servers.json` (**gitignored** — it holds local paths and per-server API keys; copy `mcp_servers.example.json` to start):
+
+```json
+{"servers": [{"name": "files", "enabled": true, "command": "npx",
+              "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/path"],
+              "env": {}, "tools": ["list_directory", "read_text_file"]}]}
+```
+
+`tools` is an optional allow-list; without it a server contributes at most 24 tools, since every schema is re-sent to the model each round. Results carry the same untrusted-data notice as web search — an MCP server is third-party content. A missing config file means "no servers", not an error, and a server that fails to start is reported in the admin panel while the app boots normally.
+
+The admin panel shows each server's status (`connected` / `connecting` / `failed` / `stopped`) and contributed tools, with a Reload button. It is **read-only by design** — the source of truth is the JSON file, and a web form must never author a subprocess command line.
 
 ---
 
@@ -278,8 +332,11 @@ Accessible from the avatar menu for admin users.
 - Assign or revoke the **Admin** role per user
 - Emails in `ADMIN_EMAILS` show as **Admin (env)** and cannot be toggled here
 
+### Skills & MCP Servers
+Views of what was discovered on disk, each with a Reload button. Skills are fully editable here (create, edit, disable, delete, and repair files that fail to parse); MCP servers are status-only. See [Skills](#skills) and [MCP servers](#mcp-servers).
+
 ### Activity Log
-A paginated table of the last 500 events (newest first), colour-coded by type: logins, login denials, session created/deleted, chat usage (model recorded; message content is not), and feedback (the optional 👎 comment is shown). Message content is never stored here except that optional comment.
+A paginated table of the last 500 events (newest first), colour-coded by type: logins, login denials, session created/deleted, chat usage (model recorded; message content is not), skill create/update/delete, and feedback (the optional 👎 comment is shown). Message content is never stored here except that optional comment.
 
 ---
 
@@ -316,7 +373,7 @@ The full stack must be running for the window to load; if it isn't up yet the ap
 
 | Table | Purpose |
 |-------|---------|
-| `users` | Google-authenticated users: display/given/custom names, `is_admin`, `theme_mode`/`theme_accent`, `briefing_hour`, `default_model` |
+| `users` | Google-authenticated users: display/given/custom names, `is_admin`, `theme_mode`, `briefing_hour`, `default_model` (`theme_accent` still exists but is unused since the design-system migration) |
 | `sessions` | Chat sessions scoped per user; title auto-set from the first message |
 | `messages` | Individual messages (`role`: user or assistant); cascade-deleted with the session |
 | `allowed_emails` | Email whitelist managed via the admin panel |
@@ -347,12 +404,16 @@ All session/chat/admin endpoints require `Authorization: Bearer <token>`. Each t
 | `POST` | `/messages/{id}/feedback` | user | `{rating: "up"\|"down", text?}` |
 | `GET`/`PATCH` | `/users/me` | user | Profile / update `custom_name`, theme, `briefing_hour`, `default_model` |
 | `GET`/`DELETE` | `/users/me/facts`, `/users/me/facts/{id}` | user | List / delete stored memory facts |
-| `GET` | `/models` | user | Local Ollama models for all; cloud models only for admins with an Anthropic key |
+| `GET` | `/models` | user | Local Ollama and Databricks models for all; cloud (Claude) models only for admins with an Anthropic key |
 | `POST`/`GET` | `/uploads`, `/uploads/{id}` | user | Upload / fetch a chat attachment (image or text, ≤10 MB) |
 | — | `/lists`, `/reminders`, `/notifications` | user | Family lists, reminders, and notification routers |
 | `GET`/`POST`/`DELETE` | `/admin/allowed-emails` | admin | List / add / remove whitelist emails |
 | `PATCH` | `/admin/users/{id}/admin` | admin | Set or clear a user's admin flag |
 | `GET` | `/admin/activity` | admin | Last 500 activity log entries |
+| `GET`/`POST` | `/admin/skills`, `/admin/skills/reload` | admin | Discovered skills + load errors / re-read `backend/skills/` |
+| `GET`/`POST`/`PUT`/`DELETE` | `/admin/skills`, `/admin/skills/{slug}` | admin | Read, create, rewrite, or remove one `SKILL.md`; all return the refreshed skills payload |
+| `PATCH` | `/admin/skills/{slug}/enabled` | admin | `{enabled: bool}` — flips the frontmatter flag, body untouched |
+| `GET`/`POST` | `/admin/mcp-servers`, `/admin/mcp-servers/reload` | admin | MCP server status + contributed tools / restart every server |
 
 ---
 

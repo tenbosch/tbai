@@ -4,16 +4,42 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>tBai toolbar</title>
+    <!-- Public Sans to match the app's body font; system fallback if offline -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <style>
-      :root {
-        --bg: #181825;
-        --line: #313244;
-        --text: #cdd6f4;
-        --muted: #6c7086;
-        --hover: #313244;
-        --active: #45475a;
-        --accent: #4d86f5;
-        --badge: #f38ba8;
+      /* ten Bosch Family Design System — warm palette. Light by default;
+         body[data-theme="dark"] mirrors the app's warm-brown dark scheme. */
+      :root,
+      body[data-theme="light"] {
+        --bg: #ffffff;
+        --line: #dfd3b9;
+        --text: #332317;
+        --muted: #948374;
+        --hover: #f5f0e6;
+        --active: #ece4d3;
+        --accent: #3f5a34;
+        --badge: #a24a2e;
+        --badge-text: #fbf8f2;
+        --select-bg: #ffffff;
+        --caret-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%23948374'/></svg>");
+      }
+      body[data-theme="dark"] {
+        --bg: #332317;
+        --line: rgba(251, 248, 242, 0.18);
+        --text: #fbf8f2;
+        --muted: #cfae87;
+        --hover: rgba(251, 248, 242, 0.08);
+        --active: rgba(251, 248, 242, 0.15);
+        --accent: #8aa374;
+        --badge: #c97a5c;
+        --badge-text: #221712;
+        --select-bg: #221712;
+        --caret-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%23cfae87'/></svg>");
       }
       * { box-sizing: border-box; }
       html, body {
@@ -22,7 +48,7 @@
         overflow: hidden;
         background: var(--bg);
         color: var(--text);
-        font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        font-family: "Public Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
         -webkit-user-select: none;
         user-select: none;
       }
@@ -41,24 +67,24 @@
         border: none;
         background: transparent;
         color: var(--text);
-        width: 32px;
+        width: 34px;
         height: 30px;
-        border-radius: 7px;
-        font-size: 16px;
-        line-height: 1;
+        border-radius: 8px;
+        line-height: 0;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         position: relative;
-        transition: background 0.12s ease;
+        transition: background 0.12s ease, color 0.12s ease;
       }
+      button.tb svg { width: 17px; height: 17px; display: block; }
       button.tb:hover { background: var(--hover); }
-      button.tb.active { background: var(--active); }
+      button.tb.active { background: var(--active); color: var(--accent); }
       button.tb.active::after {
         content: "";
         position: absolute;
-        left: 7px; right: 7px; bottom: -1px;
+        left: 8px; right: 8px; bottom: -1px;
         height: 2px;
         border-radius: 2px;
         background: var(--accent);
@@ -73,7 +99,7 @@
         padding: 0 4px;
         border-radius: 8px;
         background: var(--badge);
-        color: #11111b;
+        color: var(--badge-text);
         font-size: 10px;
         font-weight: 700;
         line-height: 15px;
@@ -81,17 +107,17 @@
       }
       select.model {
         appearance: none;
-        background: #11111b;
+        background: var(--select-bg);
         color: var(--text);
         border: 1px solid var(--line);
-        border-radius: 7px;
+        border-radius: 8px;
         height: 26px;
-        max-width: 170px;
+        max-width: 190px;
         padding: 0 22px 0 9px;
+        font-family: inherit;
         font-size: 12.5px;
         cursor: pointer;
-        /* caret */
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%236c7086'/></svg>");
+        background-image: var(--caret-img);
         background-repeat: no-repeat;
         background-position: right 8px center;
       }
@@ -99,22 +125,39 @@
       select.model[hidden] { display: none; }
     </style>
   </head>
-  <body>
+  <body data-theme="light">
     <div class="bar">
-      <button class="tb" id="btn-home" title="Home">🏠</button>
-      <button class="tb" id="btn-chats" title="Your Chats">💬</button>
-      <button class="tb" id="btn-new" title="New Chat">➕</button>
-      <button class="tb" id="btn-lists" title="Family Lists">📝</button>
-      <button class="tb" id="btn-admin" title="Admin" hidden>🛡️</button>
+      <button class="tb" id="btn-home" title="Home" aria-label="Home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      </button>
+      <button class="tb" id="btn-chats" title="Your chats" aria-label="Your chats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button class="tb" id="btn-new" title="New chat" aria-label="New chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      </button>
+      <button class="tb" id="btn-lists" title="Family lists" aria-label="Family lists">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>
+      </button>
+      <button class="tb" id="btn-admin" title="Admin" aria-label="Admin" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+      </button>
 
       <span class="sep"></span>
       <select class="model" id="model" title="Choose which AI model answers" hidden></select>
 
       <span class="spacer"></span>
 
-      <button class="tb" id="btn-notif" title="Notifications">🔔<span class="badge" id="badge" hidden>0</span></button>
-      <button class="tb" id="btn-settings" title="Settings">⚙️</button>
-      <button class="tb" id="btn-signout" title="Sign out">⏻</button>
+      <button class="tb" id="btn-notif" title="Notifications" aria-label="Notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+        <span class="badge" id="badge" hidden>0</span>
+      </button>
+      <button class="tb" id="btn-settings" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button class="tb" id="btn-signout" title="Sign out" aria-label="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+      </button>
     </div>
 
     <script>
@@ -142,7 +185,21 @@
         lists: "btn-lists",
         admin: "btn-admin",
       };
-      const state = { models: [], currentModel: null, page: null, isAdmin: false, unreadCount: 0 };
+      const state = {
+        models: [],
+        currentModel: null,
+        page: null,
+        isAdmin: false,
+        unreadCount: 0,
+        themeMode: "light",
+      };
+
+      // Mirrors modelLabel() in frontend/src/ChatComponent.jsx — keep in sync.
+      function modelLabel(m) {
+        if (m.kind === "cloud") return "Cloud · " + m.id;
+        if (m.kind === "databricks") return "Databricks · " + m.id.replace(/^databricks-/, "");
+        return m.id;
+      }
 
       function renderModels() {
         const sel = $("model");
@@ -158,7 +215,7 @@
           for (const m of list) {
             const o = document.createElement("option");
             o.value = m.id;
-            o.textContent = m.kind === "cloud" ? "☁️ " + m.id : m.id;
+            o.textContent = modelLabel(m);
             sel.appendChild(o);
           }
           sel.dataset.set = want;
@@ -174,10 +231,15 @@
         }
       }
 
+      function renderTheme() {
+        document.body.dataset.theme = state.themeMode === "dark" ? "dark" : "light";
+      }
+
       function apply(partial) {
         Object.assign(state, partial || {});
         if ("models" in (partial || {}) || "currentModel" in (partial || {})) renderModels();
         if ("page" in (partial || {})) renderActive();
+        if ("themeMode" in (partial || {})) renderTheme();
         if ("isAdmin" in (partial || {})) $("btn-admin").hidden = !state.isAdmin;
         if ("unreadCount" in (partial || {})) {
           const n = state.unreadCount || 0;

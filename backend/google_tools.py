@@ -20,7 +20,7 @@ import httpx
 from cryptography.fernet import Fernet
 
 from db import connect as db_connect
-from tools import ToolContext, register_tool, _UNTRUSTED_DATA_NOTICE
+from tools import UNTRUSTED_DATA_NOTICE, ToolContext, register_tool
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
@@ -194,7 +194,7 @@ async def calendar_list_events(args: dict, ctx: ToolContext):
         f"- {e['start']}: {e['summary']}" + (f" @ {e['location']}" if e["location"] else "")
         for e in events
     ]
-    return _UNTRUSTED_DATA_NOTICE + "Calendar events:\n" + "\n".join(lines)
+    return UNTRUSTED_DATA_NOTICE + "Calendar events:\n" + "\n".join(lines)
 
 
 # ── Gmail ─────────────────────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ async def gmail_search(args: dict, ctx: ToolContext):
             )
     except httpx.HTTPError as exc:
         return f"Error: Gmail request failed ({exc})."
-    return _UNTRUSTED_DATA_NOTICE + "Email results:\n" + "\n".join(lines)
+    return UNTRUSTED_DATA_NOTICE + "Email results:\n" + "\n".join(lines)
 
 
 # ── Drive ─────────────────────────────────────────────────────────────────────
@@ -295,4 +295,4 @@ async def drive_search(args: dict, ctx: ToolContext):
         f"modified {_clean(f.get('modifiedTime', '?'), 20)}) {f.get('webViewLink', '')}"
         for f in files
     ]
-    return _UNTRUSTED_DATA_NOTICE + "Drive files:\n" + "\n".join(lines)
+    return UNTRUSTED_DATA_NOTICE + "Drive files:\n" + "\n".join(lines)

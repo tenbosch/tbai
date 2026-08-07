@@ -1,16 +1,33 @@
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  Menu,
+  Info,
+  FileText,
+  Paperclip,
+  Mic,
+  Square,
+  Globe,
+  Search,
+  AlertTriangle,
+  Volume2,
+  ThumbsUp,
+  ThumbsDown,
+  Plus,
+  X,
+} from "lucide-react";
 import TbaiLogo from "./TbaiLogo";
 import ProfileMenu from "./ProfileMenu";
 import NotificationsBell from "./NotificationsBell";
+import ThemeToggle from "./ThemeToggle";
 import useAuthFetch from "./useAuthFetch";
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
 import { onDesktopCommand, postDesktopState } from "./desktopBridge";
 
 const API = "";
-const HEADER_H = 56;
+const HEADER_H = 64;
 const SIDEBAR_W = 240;
 const DEFAULT_MODEL = "gemma4";
 
@@ -21,6 +38,15 @@ const MAX_HISTORY_MESSAGES = 40;
 const MAX_HISTORY_CHARS = 16000;
 const CHARS_PER_TOKEN = 4; // rough char→token estimate for comparing to a model's context length
 const WARN_AT = 0.75; // show the "start a new chat" banner at 75% of the effective budget
+
+// Label for one entry from GET /models. `kind` is "local" | "cloud" | "databricks"
+// (main.py list_models); remote models get a provider prefix so it's obvious which
+// ones leave the house. Mirrored in desktop/toolbar.html — keep the two in sync.
+function modelLabel(m) {
+  if (m.kind === "cloud") return `Cloud · ${m.id}`;
+  if (m.kind === "databricks") return `Databricks · ${m.id.replace(/^databricks-/, "")}`;
+  return m.id;
+}
 
 // Cited-source links must open in a new tab — same-tab navigation loses the chat.
 const markdownComponents = {
@@ -462,7 +488,8 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
   const sidebarContent = (
     <>
       <button style={styles.newChatBtn} onClick={handleNewSession} disabled={isStreaming}>
-        + New Chat
+        <Plus size={17} strokeWidth={2} />
+        New chat
       </button>
       <div style={styles.sessionList}>
         {sessions.map((s) => (
@@ -486,7 +513,7 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
               title="Delete session"
               aria-label={`Delete chat "${s.title}"`}
             >
-              ×
+              <X size={15} strokeWidth={2} />
             </button>
           </div>
         ))}
@@ -506,14 +533,14 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
               aria-label="Toggle chat list"
               aria-expanded={sidebarOpen}
             >
-              ☰
+              <Menu size={20} strokeWidth={1.75} />
             </button>
           )}
           <button style={styles.logoBtn} onClick={onNavigateHome} title="Home">
-            <TbaiLogo style={{ padding: "4px 2px" }} />
+            <TbaiLogo />
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
           {models.length > 1 && (
             <select
               style={styles.modelPicker}
@@ -525,11 +552,12 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
             >
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.kind === "cloud" ? `☁️ ${m.id}` : m.id}
+                  {modelLabel(m)}
                 </option>
               ))}
             </select>
           )}
+          <ThemeToggle />
           <NotificationsBell />
           <ProfileMenu onNavigateAdmin={onNavigateAdmin} />
         </div>
@@ -578,8 +606,9 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
           >
             {showCtxWarning && (
               <div style={styles.contextWarning} role="status" aria-live="polite">
+                <Info size={16} strokeWidth={1.75} style={styles.contextWarningIcon} />
                 <span style={styles.contextWarningText}>
-                  💡 This chat is getting long — the assistant only keeps the most recent
+                  This chat is getting long — the assistant only keeps the most recent
                   {" "}~{MAX_HISTORY_MESSAGES} messages
                   {contextUsage.modelCtxTokens
                     ? `, and ${selectedModel} can hold about ${Math.round(
@@ -589,14 +618,15 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
                   . Starting a fresh chat will give you the best answers.
                 </span>
                 <button style={styles.contextWarningNewBtn} onClick={handleNewSession}>
-                  + New Chat
+                  <Plus size={15} strokeWidth={2} />
+                  New chat
                 </button>
                 <button
                   style={styles.contextWarningDismiss}
                   onClick={() => setCtxWarnDismissed(true)}
                   aria-label="Dismiss"
                 >
-                  ×
+                  <X size={15} strokeWidth={2} />
                 </button>
               </div>
             )}
@@ -607,7 +637,7 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
                     {a.previewUrl ? (
                       <img src={a.previewUrl} alt={a.name} style={styles.attachmentThumb} />
                     ) : (
-                      "📄"
+                      <FileText size={15} strokeWidth={1.75} />
                     )}
                     <span style={styles.attachmentName}>{a.name}</span>
                     <button
@@ -615,7 +645,7 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
                       onClick={() => removeAttachment(a.id)}
                       aria-label={`Remove attachment ${a.name}`}
                     >
-                      ×
+                      <X size={14} strokeWidth={2} />
                     </button>
                   </span>
                 ))}
@@ -636,7 +666,7 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
               aria-label="Attach a file"
               title="Attach an image or text file"
             >
-              📎
+              <Paperclip size={19} strokeWidth={1.75} />
             </button>
             {speechSupported && (
               <button
@@ -646,7 +676,7 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
                 aria-label={isRecording ? "Stop dictation" : "Start dictation"}
                 title={isRecording ? "Stop dictation" : "Dictate a message"}
               >
-                {isRecording ? "🔴" : "🎙️"}
+                <Mic size={19} strokeWidth={1.75} />
               </button>
             )}
             <textarea
@@ -667,7 +697,14 @@ export default function ChatComponent({ onNavigateAdmin, onNavigateHome, initial
               disabled={!isStreaming && (!input.trim() || !currentSessionId)}
               aria-label={isStreaming ? "Stop generating" : "Send message"}
             >
-              {isStreaming ? "◼ Stop" : "Send"}
+              {isStreaming ? (
+                <>
+                  <Square size={15} strokeWidth={2} fill="currentColor" />
+                  Stop
+                </>
+              ) : (
+                "Send"
+              )}
             </button>
           </div>
         </div>
@@ -735,7 +772,7 @@ function SourceRow({ item, styles }) {
         />
       ) : (
         <span style={styles.sourceFaviconFallback} aria-hidden="true">
-          🌐
+          <Globe size={16} strokeWidth={1.75} />
         </span>
       )}
       <span style={styles.sourceTitle}>{item.title || domain || item.url}</span>
@@ -750,7 +787,10 @@ function SourcesList({ items, styles }) {
   return (
     <div style={styles.sourcesBox}>
       <div style={styles.sourcesHeader}>
-        <span>🌐 Sources</span>
+        <span style={styles.sourcesHeaderLabel}>
+          <Globe size={15} strokeWidth={1.75} />
+          Sources
+        </span>
         <span style={styles.sourcesCount}>
           {items.length} result{items.length === 1 ? "" : "s"}
         </span>
@@ -808,7 +848,9 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
                 a.previewUrl ? (
                   <img key={a.id} src={a.previewUrl} alt={a.name} style={styles.bubbleImage} />
                 ) : (
-                  <span key={a.id} style={styles.bubbleFileTag}>📄 {a.name}</span>
+                  <span key={a.id} style={styles.bubbleFileTag}>
+                    <FileText size={14} strokeWidth={1.75} /> {a.name}
+                  </span>
                 )
               )}
             </div>
@@ -822,10 +864,14 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
           <SourcesList items={sources} styles={styles} />
           {msg.status && (
             <div style={styles.statusChip} aria-live="polite" role="status">
-              🔍 <em>{msg.status}</em>
+              <Search size={14} strokeWidth={1.75} /> <em>{msg.status}</em>
             </div>
           )}
-          {msg.error && <div style={styles.bubbleError}>⚠️ {msg.error}</div>}
+          {msg.error && (
+            <div style={styles.bubbleError}>
+              <AlertTriangle size={15} strokeWidth={1.75} /> {msg.error}
+            </div>
+          )}
           {isStreamingThis && !msg.status && <span style={styles.cursor}>▍</span>}
         </div>
       )}
@@ -839,7 +885,11 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
               title={speaking ? "Stop reading" : "Read aloud"}
               aria-label={speaking ? "Stop reading aloud" : "Read this reply aloud"}
             >
-              {speaking ? "⏹️" : "🔊"}
+              {speaking ? (
+                <Square size={17} strokeWidth={1.75} fill="currentColor" />
+              ) : (
+                <Volume2 size={17} strokeWidth={1.75} />
+              )}
             </button>
           )}
         </div>
@@ -881,7 +931,12 @@ function FeedbackButtons({ messageId, authFetch, styles }) {
     return (
       <div style={styles.feedbackRow}>
         <span style={styles.feedbackThanks}>
-          {vote === "up" ? "👍" : "👎"} Thanks for the feedback
+          {vote === "up" ? (
+            <ThumbsUp size={14} strokeWidth={1.75} />
+          ) : (
+            <ThumbsDown size={14} strokeWidth={1.75} />
+          )}
+          Thanks for the feedback
         </span>
       </div>
     );
@@ -922,28 +977,22 @@ function FeedbackButtons({ messageId, authFetch, styles }) {
 
   return (
     <div style={styles.feedbackRow}>
-      <button style={styles.feedbackIconBtn} onClick={handleUp} title="Good response">
-        👍
+      <button style={styles.feedbackIconBtn} onClick={handleUp} title="Good response" aria-label="Good response">
+        <ThumbsUp size={17} strokeWidth={1.75} />
       </button>
-      <button style={styles.feedbackIconBtn} onClick={handleDownClick} title="Bad response">
-        👎
+      <button style={styles.feedbackIconBtn} onClick={handleDownClick} title="Bad response" aria-label="Bad response">
+        <ThumbsDown size={17} strokeWidth={1.75} />
       </button>
     </div>
   );
 }
 
 function getStyles(theme) {
-  const errorBg = theme.mode === "dark" ? "rgba(243,139,168,0.15)" : "#fee2e2";
-  // Warm/amber notice — advisory, not an error, so it reads distinctly from errorBanner.
-  const warnColor = theme.mode === "dark" ? "#f9e2af" : "#a16207";
-  const warnBg = theme.mode === "dark" ? "rgba(249,226,175,0.12)" : "#fefce8";
-  const warnBorder = theme.mode === "dark" ? "rgba(249,226,175,0.4)" : "#fde68a";
-
   return {
     root: {
       display: "flex",
       flexDirection: "column",
-      fontFamily: "sans-serif",
+      fontFamily: theme.fontBody,
       overflow: "hidden",
       background: theme.bg,
       color: theme.text,
@@ -952,12 +1001,12 @@ function getStyles(theme) {
     // Header
     header: {
       height: HEADER_H,
-      background: theme.bg,
+      background: theme.surface,
       color: theme.text,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "0 16px",
+      padding: "0 clamp(14px, 4vw, 24px)",
       gap: 12,
       flexShrink: 0,
       borderBottom: `1px solid ${theme.border}`,
@@ -965,13 +1014,12 @@ function getStyles(theme) {
     headerLeft: {
       display: "flex",
       alignItems: "center",
-      gap: 12,
+      gap: 8,
     },
     hamburger: {
       background: "none",
       border: "none",
       color: theme.text,
-      fontSize: 22,
       cursor: "pointer",
       minWidth: 44,
       minHeight: 44,
@@ -1003,7 +1051,7 @@ function getStyles(theme) {
       bottom: 0,
       left: 0,
       right: 0,
-      background: "rgba(0,0,0,0.45)",
+      background: theme.scrim,
       zIndex: 199,
     },
 
@@ -1011,13 +1059,14 @@ function getStyles(theme) {
     sidebar: {
       width: SIDEBAR_W,
       minWidth: SIDEBAR_W,
-      background: theme.bg,
+      background: theme.surface,
       color: theme.text,
       display: "flex",
       flexDirection: "column",
       padding: "12px 8px",
       gap: 8,
       overflow: "hidden",
+      borderRight: `1px solid ${theme.border}`,
     },
 
     // Sidebar — mobile (fixed drawer below header)
@@ -1027,7 +1076,7 @@ function getStyles(theme) {
       bottom: 0,
       left: 0,
       width: 260,
-      background: theme.bg,
+      background: theme.surface,
       color: theme.text,
       display: "flex",
       flexDirection: "column",
@@ -1035,19 +1084,23 @@ function getStyles(theme) {
       gap: 8,
       overflow: "hidden",
       zIndex: 200,
+      borderRight: `1px solid ${theme.border}`,
     },
 
     newChatBtn: {
-      background: theme.overlay,
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      background: theme.surfaceWarm,
       color: theme.text,
-      border: `1px solid ${theme.overlay2}`,
-      borderRadius: 8,
-      padding: "13px 12px",
+      border: `1px solid ${theme.border}`,
+      borderRadius: 10,
+      padding: "12px 14px",
       minHeight: 44,
       cursor: "pointer",
-      fontWeight: "bold",
+      fontFamily: theme.fontBody,
+      fontWeight: 600,
       fontSize: 14,
-      textAlign: "left",
       flexShrink: 0,
     },
     sessionList: {
@@ -1058,17 +1111,17 @@ function getStyles(theme) {
       flex: 1,
     },
     sessionItem: {
-      padding: "8px 10px",
-      borderRadius: 6,
+      padding: "9px 10px",
+      borderRadius: 8,
       cursor: "pointer",
       position: "relative",
     },
     sessionItemActive: {
-      background: theme.overlay,
+      background: theme.surfaceAlt,
     },
     sessionTitle: {
       fontSize: 13,
-      fontWeight: 500,
+      fontWeight: 600,
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis",
@@ -1082,7 +1135,7 @@ function getStyles(theme) {
     },
     deleteBtn: {
       position: "absolute",
-      top: 4,
+      top: 6,
       right: 2,
       width: 32,
       height: 32,
@@ -1093,15 +1146,14 @@ function getStyles(theme) {
       border: "none",
       color: theme.muted,
       cursor: "pointer",
-      fontSize: 20,
       lineHeight: 1,
       padding: 0,
       opacity: 0,
-      transition: "opacity 0.1s",
+      transition: "opacity 0.12s",
     },
 
     errorBanner: {
-      background: errorBg,
+      background: theme.errorSoft,
       border: `1px solid ${theme.error}`,
       borderRadius: 8,
       padding: "10px 14px",
@@ -1114,35 +1166,41 @@ function getStyles(theme) {
       display: "flex",
       alignItems: "center",
       gap: 8,
-      background: warnBg,
-      border: `1px solid ${warnBorder}`,
-      borderRadius: 8,
+      background: theme.warnSoft,
+      border: `1px solid ${theme.warn}`,
+      borderRadius: 10,
       padding: "8px 12px",
-      color: warnColor,
+      color: theme.warn,
       fontSize: 13,
     },
+    contextWarningIcon: { flexShrink: 0 },
     contextWarningText: {
       flex: 1,
       lineHeight: 1.4,
     },
     contextWarningNewBtn: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
       flexShrink: 0,
       background: "transparent",
-      border: `1px solid ${warnColor}`,
-      borderRadius: 6,
-      padding: "4px 10px",
-      color: warnColor,
+      border: `1px solid ${theme.warn}`,
+      borderRadius: 8,
+      padding: "5px 10px",
+      color: theme.warn,
       fontSize: 12,
       fontWeight: 600,
       cursor: "pointer",
       whiteSpace: "nowrap",
     },
     contextWarningDismiss: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       flexShrink: 0,
       background: "transparent",
       border: "none",
-      color: warnColor,
-      fontSize: 18,
+      color: theme.warn,
       lineHeight: 1,
       cursor: "pointer",
       padding: "0 2px",
@@ -1162,7 +1220,9 @@ function getStyles(theme) {
     title: {
       textAlign: "center",
       margin: 0,
-      fontSize: 18,
+      fontFamily: theme.fontDisplay,
+      fontWeight: 600,
+      fontSize: 20,
       color: theme.text,
       flexShrink: 0,
       whiteSpace: "nowrap",
@@ -1172,7 +1232,7 @@ function getStyles(theme) {
     messageList: {
       flex: 1,
       border: `1px solid ${theme.border}`,
-      borderRadius: 8,
+      borderRadius: 10,
       padding: 16,
       overflowY: "auto",
       display: "flex",
@@ -1185,8 +1245,8 @@ function getStyles(theme) {
       alignSelf: "flex-end",
       background: theme.userBubble,
       color: theme.userBubbleText,
-      padding: "8px 12px",
-      borderRadius: 12,
+      padding: "9px 13px",
+      borderRadius: 14,
       maxWidth: "80%",
       whiteSpace: "pre-wrap",
     },
@@ -1194,8 +1254,8 @@ function getStyles(theme) {
       alignSelf: "flex-start",
       background: theme.assistantBubble,
       border: `1px solid ${theme.border}`,
-      padding: "8px 12px",
-      borderRadius: 12,
+      padding: "9px 13px",
+      borderRadius: 14,
       maxWidth: "80%",
     },
     markdown: { lineHeight: 1.6 },
@@ -1214,7 +1274,11 @@ function getStyles(theme) {
       padding: "8px 12px",
       color: theme.muted,
       fontWeight: 600,
-      letterSpacing: 0.3,
+    },
+    sourcesHeaderLabel: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
     },
     sourcesCount: { fontWeight: 400, color: theme.muted },
     sourceRow: {
@@ -1228,7 +1292,14 @@ function getStyles(theme) {
       minWidth: 0,
     },
     sourceFavicon: { width: 18, height: 18, borderRadius: 4, flexShrink: 0 },
-    sourceFaviconFallback: { fontSize: 14, width: 18, flexShrink: 0, textAlign: "center" },
+    sourceFaviconFallback: {
+      width: 18,
+      flexShrink: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: theme.muted,
+    },
     sourceTitle: {
       flex: 1,
       minWidth: 0,
@@ -1239,12 +1310,12 @@ function getStyles(theme) {
     sourceDomain: { color: theme.muted, flexShrink: 0, fontSize: 12 },
     cursor: { animation: "blink 1s step-end infinite" },
     iconBtn: {
-      background: "none",
+      background: theme.surface,
       border: `1px solid ${theme.border}`,
-      borderRadius: 8,
+      borderRadius: 10,
       minWidth: 44,
       minHeight: 44,
-      fontSize: 18,
+      color: theme.text,
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
@@ -1253,7 +1324,8 @@ function getStyles(theme) {
     },
     iconBtnActive: {
       border: `1px solid ${theme.error}`,
-      background: theme.mode === "dark" ? "rgba(243,139,168,0.15)" : "#fee2e2",
+      background: theme.errorSoft,
+      color: theme.error,
     },
     attachmentChips: {
       width: "100%",
@@ -1268,7 +1340,7 @@ function getStyles(theme) {
       gap: 6,
       padding: "4px 8px",
       borderRadius: 8,
-      background: theme.overlay,
+      background: theme.surfaceWarm,
       border: `1px solid ${theme.border}`,
       fontSize: 12,
       color: theme.text,
@@ -1286,10 +1358,12 @@ function getStyles(theme) {
       whiteSpace: "nowrap",
     },
     attachmentRemove: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       background: "none",
       border: "none",
       color: theme.muted,
-      fontSize: 16,
       lineHeight: 1,
       cursor: "pointer",
       padding: "0 2px",
@@ -1307,32 +1381,41 @@ function getStyles(theme) {
       display: "block",
     },
     bubbleFileTag: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
       fontSize: 12,
       padding: "4px 8px",
       borderRadius: 8,
-      background: "rgba(0,0,0,0.15)",
+      background: "rgba(255,255,255,0.18)",
     },
     modelPicker: {
-      maxWidth: "min(180px, 34vw)",
+      maxWidth: "min(200px, 40vw)",
       minWidth: 0,
       padding: "8px 10px",
-      borderRadius: 8,
+      borderRadius: 10,
       border: `1px solid ${theme.border}`,
       background: theme.surface,
       color: theme.text,
       fontSize: 13,
-      fontFamily: "inherit",
+      fontFamily: theme.fontBody,
       cursor: "pointer",
     },
     statusChip: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
       marginTop: 6,
       fontSize: 13,
       color: theme.muted,
     },
     bubbleError: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
       marginTop: 6,
       padding: "8px 12px",
-      background: errorBg,
+      background: theme.errorSoft,
       border: `1px solid ${theme.error}`,
       borderRadius: 8,
       color: theme.error,
@@ -1341,22 +1424,25 @@ function getStyles(theme) {
     feedbackRow: {
       marginTop: 6,
       display: "flex",
+      alignItems: "center",
       gap: 6,
     },
     feedbackIconBtn: {
       background: "none",
       border: `1px solid ${theme.border}`,
-      borderRadius: 6,
+      borderRadius: 10,
       minWidth: 44,
       minHeight: 44,
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      fontSize: 16,
       cursor: "pointer",
       color: theme.text,
     },
     feedbackThanks: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
       fontSize: 12,
       color: theme.muted,
     },
@@ -1369,10 +1455,10 @@ function getStyles(theme) {
     },
     feedbackTextarea: {
       padding: 8,
-      borderRadius: 6,
+      borderRadius: 8,
       border: `1px solid ${theme.border}`,
       resize: "vertical",
-      fontFamily: "inherit",
+      fontFamily: theme.fontBody,
       fontSize: 13,
       background: theme.surface,
       color: theme.text,
@@ -1386,8 +1472,9 @@ function getStyles(theme) {
       padding: "12px 14px",
       minHeight: 44,
       background: "none",
-      border: `1px solid ${theme.border}`,
-      borderRadius: 6,
+      border: `1px solid ${theme.borderStrong}`,
+      borderRadius: 10,
+      fontFamily: theme.fontBody,
       fontSize: 12,
       cursor: "pointer",
       color: theme.text,
@@ -1396,8 +1483,9 @@ function getStyles(theme) {
       padding: "12px 14px",
       minHeight: 44,
       background: theme.accent,
-      border: "none",
-      borderRadius: 6,
+      border: "1px solid transparent",
+      borderRadius: 10,
+      fontFamily: theme.fontBody,
       fontSize: 12,
       cursor: "pointer",
       color: theme.userBubbleText,
@@ -1411,31 +1499,36 @@ function getStyles(theme) {
       flexShrink: 0,
       padding: "8px 16px",
       paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
-      background: theme.bg,
+      background: theme.surface,
       borderTop: `1px solid ${theme.border}`,
       zIndex: 150,
     },
     textarea: {
       flex: 1,
-      padding: 10,
-      borderRadius: 8,
+      padding: 12,
+      borderRadius: 10,
       border: `1px solid ${theme.border}`,
       resize: "vertical",
       minHeight: 60,
-      fontFamily: "inherit",
+      fontFamily: theme.fontBody,
       fontSize: 14,
-      background: theme.surface,
+      background: theme.bg,
       color: theme.text,
     },
     button: {
-      padding: "13px 20px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      padding: "13px 22px",
       minHeight: 44,
-      borderRadius: 8,
-      border: "none",
+      borderRadius: 10,
+      border: "1px solid transparent",
       background: theme.accent,
       color: theme.userBubbleText,
       cursor: "pointer",
-      fontWeight: "bold",
+      fontFamily: theme.fontBody,
+      fontWeight: 600,
       alignSelf: "flex-end",
     },
   };

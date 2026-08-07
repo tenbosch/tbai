@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Settings, Shield, LogOut } from "lucide-react";
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
 import ProfileSettings from "./ProfileSettings";
@@ -10,6 +11,7 @@ export default function ProfileMenu({ onNavigateAdmin }) {
   const styles = getStyles(theme);
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -37,8 +39,14 @@ export default function ProfileMenu({ onNavigateAdmin }) {
   return (
     <div ref={menuRef} style={styles.wrap}>
       <button style={styles.avatar} onClick={() => setOpen((o) => !o)} title={user.display_name}>
-        {user.avatar_url ? (
-          <img src={user.avatar_url} alt={user.display_name} style={styles.avatarImg} />
+        {user.avatar_url && !avatarFailed ? (
+          <img
+            src={user.avatar_url}
+            alt=""
+            style={styles.avatarImg}
+            referrerPolicy="no-referrer"
+            onError={() => setAvatarFailed(true)}
+          />
         ) : (
           <span style={styles.avatarInitial}>{initial}</span>
         )}
@@ -58,6 +66,7 @@ export default function ProfileMenu({ onNavigateAdmin }) {
               setSettingsOpen(true);
             }}
           >
+            <Settings size={17} strokeWidth={1.75} />
             Settings
           </button>
           {user.is_admin && (
@@ -68,6 +77,7 @@ export default function ProfileMenu({ onNavigateAdmin }) {
                 onNavigateAdmin();
               }}
             >
+              <Shield size={17} strokeWidth={1.75} />
               Admin
             </button>
           )}
@@ -78,6 +88,7 @@ export default function ProfileMenu({ onNavigateAdmin }) {
               logout();
             }}
           >
+            <LogOut size={17} strokeWidth={1.75} />
             Sign out
           </button>
         </div>
@@ -99,8 +110,8 @@ function getStyles(theme) {
       height: 44,
       borderRadius: "50%",
       overflow: "hidden",
-      border: `2px solid ${theme.overlay2}`,
-      background: theme.overlay,
+      border: `1px solid ${theme.borderStrong}`,
+      background: theme.surfaceWarm,
       cursor: "pointer",
       padding: 0,
       display: "flex",
@@ -126,8 +137,8 @@ function getStyles(theme) {
       background: theme.surface,
       border: `1px solid ${theme.border}`,
       borderRadius: 10,
-      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-      minWidth: 200,
+      boxShadow: "0 16px 32px rgba(var(--shadow-color), 0.16)",
+      minWidth: 210,
       maxWidth: "calc(100vw - 32px)",
       zIndex: 300,
       overflow: "hidden",
@@ -153,12 +164,14 @@ function getStyles(theme) {
     menuItem: {
       display: "flex",
       alignItems: "center",
+      gap: 10,
       width: "100%",
       minHeight: 44,
       textAlign: "left",
       background: "none",
       border: "none",
       color: theme.text,
+      fontFamily: theme.fontBody,
       fontSize: 14,
       padding: "13px 16px",
       cursor: "pointer",

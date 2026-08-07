@@ -21,7 +21,9 @@ log = logging.getLogger("tbai.providers")
 ANTHROPIC_MODELS_ENV = "ANTHROPIC_MODELS"
 DEFAULT_ANTHROPIC_MODELS = ["claude-opus-4-8"]
 
-MAX_TOOL_ROUNDS = 5
+# Shared with the Ollama loop so the two providers can't drift apart; imported
+# lazily inside the loop alongside _system_prompt (agent_logic imports tools, and
+# a top-level import here would close the cycle).
 MAX_OUTPUT_TOKENS = 64_000  # streaming; a ceiling, not a target — billing is per actual token
 
 
@@ -42,7 +44,8 @@ def is_cloud_model(model: str) -> bool:
 def _anthropic_tools() -> list[dict]:
     """Translate the registry's OpenAI-style schemas to Anthropic tool format."""
     out = []
-    for name, tool in TOOL_REGISTRY.items():
+    # Snapshot: MCP tools are registered/removed at runtime (see mcp_client.py).
+    for name, tool in list(TOOL_REGISTRY.items()):
         fn = tool.schema["function"]
         out.append(
             {
@@ -68,7 +71,7 @@ async def stream_agent_anthropic(
     """
     # Shared system prompt + memory injection (deferred import: agent_logic
     # imports nothing from here, so this direction is cycle-free).
-    from agent_logic import _system_prompt, _window_history
+    from agent_logic import MAX_TOOL_ROUNDS, _system_prompt, _window_history
     from memory import get_user_facts
 
     facts = await get_user_facts(ctx.db_connect, ctx.user_id)

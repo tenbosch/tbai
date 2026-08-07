@@ -4,19 +4,105 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>tBai</title>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- TEMPORARY on-screen error catcher for mobile debugging (no Mac = no remote
+         iOS console). ES5-only so it can't itself fail on old WebKit. Installs
+         global handlers before the app bundle, surfaces any uncaught error /
+         rejection / non-mount as visible text. Remove once the mobile bug is fixed. -->
+    <script>
+      (function () {
+        function show(msg) {
+          try {
+            var d = document.getElementById("tbai-err");
+            if (!d) {
+              d = document.createElement("div");
+              d.id = "tbai-err";
+              d.style.cssText =
+                "position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;" +
+                "background:#1a1a1a;color:#ff8a8a;font:13px/1.5 monospace;padding:16px;" +
+                "overflow:auto;white-space:pre-wrap;-webkit-user-select:text;user-select:text;";
+              (document.body || document.documentElement).appendChild(d);
+            }
+            d.appendChild(document.createTextNode(msg + "\n\n"));
+          } catch (e) {}
+        }
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (t && t !== window && t.tagName) {
+              // Failed resource load (img/script/link/font) — non-fatal. These
+              // (Cloudflare beacon, Google sign-in stylesheet, etc.) don't blank
+              // the app, so only log them; never throw up the blocking overlay.
+              try {
+                console.warn("tBai resource failed:", t.tagName, t.src || t.href || "");
+              } catch (x) {}
+              return;
+            } else {
+              var stack = (e.error && e.error.stack) || "";
+              var where = (e.filename || "") + ":" + (e.lineno || "") + ":" + (e.colno || "");
+              show("JS ERROR: " + (e.message || e.type) + "\n" + (stack || where));
+            }
+            show("UA: " + navigator.userAgent);
+          },
+          true
+        );
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason;
+          show("PROMISE REJECTION: " + ((r && r.message) || r) + "\n" + ((r && r.stack) || ""));
+          show("UA: " + navigator.userAgent);
+        });
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.childNodes.length === 0) {
+            show("APP DID NOT MOUNT (no children in #root after 6s, but no error was thrown).");
+            show("UA: " + navigator.userAgent);
+          }
+        }, 6000);
+      })();
+    </script>
+    <!-- Fonts (Lora + Public Sans + IBM Plex Mono) load via @import in src/styles/tokens/typography.css -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <style>
       *, *::before, *::after { box-sizing: border-box; }
       html, body, #root { margin: 0; padding: 0; height: 100%; }
       html, body { overflow-x: hidden; }
-      @keyframes blink { 50% { opacity: 0; } }
-      @keyframes intro-glow-pulse {
-        from { transform: scale(0.9) rotate(0deg); opacity: 0.22; }
-        to { transform: scale(1.1) rotate(180deg); opacity: 0.42; }
+      body {
+        font-family: var(--font-body, -apple-system, BlinkMacSystemFont, sans-serif);
+        background: var(--tbai-bg, #FBF8F2);
+        color: var(--tbai-text, #332317);
       }
+      @keyframes blink { 50% { opacity: 0; } }
       @keyframes intro-hint-fadein {
         from { opacity: 0; }
         to { opacity: 1; }
+      }
+      /* Intro reveal — pure CSS (no JS animation lib) so it can't leave the
+         overlay stuck invisible if a JS animation framework misbehaves on
+         mobile WebKit. `both` fill keeps words hidden through their delay and
+         holds them visible after; if the animation is somehow skipped the
+         elements fall back to their natural (fully opaque) state, never blank. */
+      @keyframes intro-logo-in {
+        from { opacity: 0; transform: scale(0.85); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+      @keyframes intro-word-in {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .intro-logo {
+        animation: intro-logo-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      .intro-word {
+        display: inline-block;
+        animation: intro-word-in 840ms ease-out both;
+        /* per-word stagger delay is set inline in IntroScreen.jsx */
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .intro-logo, .intro-word {
+          animation: intro-hint-fadein 300ms ease-out both !important;
+          transform: none !important;
+        }
       }
       @keyframes intro-hint-pulse {
         0%, 100% { opacity: 0.55; }
@@ -32,7 +118,6 @@
         animation: intro-hint-fadein 300ms ease-out 400ms forwards;
       }
       @media (prefers-reduced-motion: reduce) {
-        .intro-glow { animation: none !important; }
         .intro-hint { animation: intro-hint-fadein 300ms ease-out 400ms forwards !important; }
       }
       /* Show delete button only when hovering the session item */

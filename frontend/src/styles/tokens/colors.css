@@ -1,0 +1,82 @@
+/* ============================================================
+   ten Bosch Family — Color tokens
+   Derived from the family home: warm brick brown, off-white
+   trim, forest-green shutters, and garden greens.
+   ============================================================ */
+
+:root {
+  /* ---- Base palette: warm off-white (trim & sky) ---- */
+  --paper-0: #FBF8F2;   /* lightest — page background */
+  --paper-50: #F5F0E6;  /* card surface */
+  --paper-100: #ECE4D3; /* sunken surface, dividers-adjacent fill */
+  --paper-200: #DFD3B9; /* strong divider / input border */
+  --paper-300: #CBB995; /* deepest paper tone, quiet borders on dark */
+
+  /* ---- Base palette: brick & wood brown ---- */
+  --brown-100: #E4CDB4; /* pale brick highlight */
+  --brown-200: #CFAE87; /* brick light */
+  --brown-300: #B5875D; /* brick midtone */
+  --brown-400: #9C6C45; /* brick shadow / warm accent */
+  --brown-500: #7C5334; /* saddle brown — secondary accent */
+  --brown-600: #5E3D25; /* door wood */
+  --brown-700: #47301F; /* deep wood / roofline shadow */
+  --brown-800: #332317; /* near-black brown — primary text */
+  --brown-900: #221712; /* deepest — high-contrast text */
+
+  /* ---- Base palette: forest & garden green ---- */
+  --green-100: #E1E8D9; /* pale sage tint */
+  --green-200: #B9CBA9; /* soft sage */
+  --green-300: #8AA374; /* garden green */
+  --green-400: #5F7F4C; /* leaf green */
+  --green-500: #3F5A34; /* forest green — primary brand color */
+  --green-600: #304528; /* shutter green (deep) */
+  --green-700: #24331E; /* deepest forest, near-black green */
+  --green-800: #1A2516;
+
+  /* ---- Utility hues (warm-tinted, not primary brand colors) ---- */
+  --rust-500: #A24A2E;   /* warm terracotta — danger/alerts */
+  --rust-100: #F4DCD0;
+  --amber-500: #B87A2A;  /* warm amber — warnings */
+  --amber-100: #F3E3C6;
+  --sky-500: #5E7C8C;    /* muted slate-blue — info, used sparingly */
+  --sky-100: #DCE6E9;
+
+  /* ================= Semantic aliases ================= */
+  --color-bg: var(--paper-0);
+  --color-bg-sunken: var(--paper-100);
+  --color-surface: #FFFFFF;
+  --color-surface-warm: var(--paper-50);
+
+  --color-text-primary: var(--brown-800);
+  --color-text-secondary: #6B5B4C;
+  --color-text-muted: #948374;
+  --color-text-on-dark: var(--paper-0);
+  --color-text-on-primary: var(--paper-0);
+
+  --color-border: var(--paper-200);
+  --color-border-strong: var(--paper-300);
+  --color-border-on-dark: rgba(251, 248, 242, 0.18);
+
+  --color-primary: var(--green-500);
+  --color-primary-hover: var(--green-600);
+  --color-primary-active: var(--green-700);
+  --color-primary-soft: var(--green-100);
+
+  --color-accent: var(--brown-400);
+  --color-accent-hover: var(--brown-500);
+  --color-accent-soft: var(--brown-100);
+
+  --color-success: var(--green-400);
+  --color-success-soft: var(--green-100);
+  --color-warning: var(--amber-500);
+  --color-warning-soft: var(--amber-100);
+  --color-danger: var(--rust-500);
+  --color-danger-soft: var(--rust-100);
+  --color-info: var(--sky-500);
+  --color-info-soft: var(--sky-100);
+
+  --color-focus-ring: var(--green-400);
+
+  /* Shadow tint — warm brown, never pure black */
+  --shadow-color: 34, 23, 18;
+}

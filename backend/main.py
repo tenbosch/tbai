@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -20,8 +21,11 @@ from slowapi.middleware import SlowAPIMiddleware
 from auth import create_app_jwt, get_current_user, require_admin, verify_google_token
 from agent_logic import stream_agent
 from db import connect as db_connect
+import databricks_provider
 import google_tools  # importing registers the calendar/gmail/drive tools
+import mcp_client
 import providers
+import skills  # importing also registers the load_skill tool
 from lists import router as lists_router  # importing also registers list tools
 from memory import delete_user_fact, get_user_facts  # importing also registers memory tools
 from reminders import router as reminders_router  # importing also registers reminder tools
@@ -30,6 +34,8 @@ from security import get_client_ip, get_user_or_ip, limiter
 from tools import ToolContext
 
 load_dotenv()
+
+log = logging.getLogger("tbai.main")
 
 
 async def init_db():
@@ -75,7 +81,7 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN avatar_url   TEXT",
             "ALTER TABLE users ADD COLUMN is_admin     INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN custom_name  TEXT",
-            "ALTER TABLE users ADD COLUMN theme_mode   TEXT NOT NULL DEFAULT 'dark'",
+            "ALTER TABLE users ADD COLUMN theme_mode   TEXT NOT NULL DEFAULT 'light'",
             "ALTER TABLE users ADD COLUMN theme_accent TEXT NOT NULL DEFAULT 'mauve'",
         ]:
             try:
@@ -254,6 +260,17 @@ async def init_db():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Neither of these may block startup: a malformed skill file or a broken MCP
+    # server must leave the app fully usable (the failure shows in the admin panel).
+    try:
+        skills.load_skills()
+    except Exception:
+        log.exception("failed to load skills")
+    try:
+        await mcp_client.connect_all()
+    except Exception:
+        log.exception("failed to connect MCP servers")
+
     scheduler_task = asyncio.create_task(scheduler_loop())
     yield
     scheduler_task.cancel()
@@ -261,6 +278,10 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     except asyncio.CancelledError:
         pass
+    try:
+        await mcp_client.shutdown()
+    except Exception:
+        log.exception("error shutting down MCP servers")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -285,7 +306,7 @@ app.add_middleware(
 _CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "img-src 'self' data: https:; "
     "connect-src 'self' https://accounts.google.com; "
@@ -327,6 +348,19 @@ class SetAdminRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     rating: str  # "up" or "down"
     text: str | None = Field(default=None, max_length=2000)
+
+
+class SkillWrite(BaseModel):
+    # Caps mirror backend/skills.py; skills._validate_fields re-checks them after
+    # trimming, so the two can't drift into disagreement.
+    name: str = Field(min_length=1, max_length=skills.MAX_NAME_LEN)
+    description: str = Field(min_length=1, max_length=skills.MAX_DESCRIPTION_LEN)
+    body: str = Field(min_length=1, max_length=skills.MAX_SKILL_CHARS)
+    enabled: bool = True
+
+
+class SkillEnabledRequest(BaseModel):
+    enabled: bool
 
 
 ALLOWED_THEME_MODES = {"light", "dark"}
@@ -693,6 +727,141 @@ async def remove_allowed_email(email: EmailStr, _: dict = Depends(require_admin)
         await db.commit()
 
 
+# ── Skills & MCP servers (admin) ──────────────────────────────────────────────
+#
+# Both are configured on disk (backend/skills/*.md, backend/mcp_servers.json),
+# not in the DB. Skills are editable from the admin UI because a SKILL.md is
+# inert markdown; MCP servers stay read-only + reload, because a web form must
+# never get to author a subprocess command line.
+#
+# Every skill mutation ends with load_skills() and returns the same payload the
+# reload endpoint does, so the client stays in sync in one round-trip.
+
+def _skills_payload() -> dict:
+    return {
+        "skills": [
+            {
+                "name": s.name,
+                "description": s.description,
+                "path": s.path,
+                "slug": s.slug,
+                "chars": len(s.body),
+                "truncated": s.truncated,
+                "enabled": s.enabled,
+            }
+            for s in skills.SKILL_INDEX.values()
+        ],
+        "load_errors": list(skills.LOAD_ERRORS),
+    }
+
+
+def _skills_reloaded() -> dict:
+    skills.load_skills()
+    return _skills_payload()
+
+
+async def _log_skill_event(admin: dict, event: str, slug: str) -> None:
+    # The slug rides in `feedback_text` — it's the table's only free-text column,
+    # and the admin UI already renders it as the row's Detail. Cheaper than a
+    # migration for a column that would hold the same thing.
+    async with db_connect() as db:
+        await db.execute(
+            "INSERT INTO activity_log (user_id, email, display_name, event, feedback_text) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (int(admin["sub"]), admin.get("email"), admin.get("display_name"), event, slug),
+        )
+        await db.commit()
+
+
+def _skill_write_error(exc: Exception) -> HTTPException:
+    """Map the skills module's exceptions onto status codes."""
+    if isinstance(exc, FileNotFoundError):
+        return HTTPException(status_code=404, detail="No such skill")
+    if isinstance(exc, skills.SkillExists):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    log.exception("skill write failed")
+    return HTTPException(status_code=500, detail="Could not write the skill file")
+
+
+@app.get("/admin/skills")
+async def list_skills(_: dict = Depends(require_admin)):
+    return _skills_payload()
+
+
+@app.post("/admin/skills/reload")
+async def reload_skills(_: dict = Depends(require_admin)):
+    return _skills_reloaded()
+
+
+@app.get("/admin/skills/{slug}")
+async def get_skill(slug: str, _: dict = Depends(require_admin)):
+    """One skill's editable content, read from disk rather than from SKILL_INDEX.
+
+    A file that currently fails to load comes back too, with `error` set — that's
+    the repair path for a broken SKILL.md.
+    """
+    try:
+        skill = skills.read_skill_file(slug)
+    except ValueError as exc:
+        raise _skill_write_error(exc) from None
+    if skill is None:
+        raise HTTPException(status_code=404, detail="No such skill")
+    return skill
+
+
+@app.post("/admin/skills", status_code=201)
+async def create_skill(req: SkillWrite, current_admin: dict = Depends(require_admin)):
+    try:
+        slug = skills.create_skill(req.name, req.description, req.body, req.enabled)
+    except Exception as exc:
+        raise _skill_write_error(exc) from None
+    await _log_skill_event(current_admin, "skill_created", slug)
+    return _skills_reloaded()
+
+
+@app.put("/admin/skills/{slug}")
+async def update_skill(slug: str, req: SkillWrite, current_admin: dict = Depends(require_admin)):
+    try:
+        new_slug = skills.update_skill(slug, req.name, req.description, req.body, req.enabled)
+    except Exception as exc:
+        raise _skill_write_error(exc) from None
+    await _log_skill_event(current_admin, "skill_updated", new_slug)
+    return _skills_reloaded()
+
+
+@app.patch("/admin/skills/{slug}/enabled")
+async def set_skill_enabled(slug: str, req: SkillEnabledRequest, current_admin: dict = Depends(require_admin)):
+    try:
+        skills.set_skill_enabled(slug, req.enabled)
+    except Exception as exc:
+        raise _skill_write_error(exc) from None
+    await _log_skill_event(current_admin, "skill_updated", slug)
+    return _skills_reloaded()
+
+
+@app.delete("/admin/skills/{slug}")
+async def delete_skill(slug: str, current_admin: dict = Depends(require_admin)):
+    try:
+        skills.delete_skill(slug)
+    except Exception as exc:
+        raise _skill_write_error(exc) from None
+    await _log_skill_event(current_admin, "skill_deleted", slug)
+    return _skills_reloaded()
+
+
+@app.get("/admin/mcp-servers")
+async def list_mcp_servers(_: dict = Depends(require_admin)):
+    return {"servers": mcp_client.server_states()}
+
+
+@app.post("/admin/mcp-servers/reload")
+async def reload_mcp_servers(_: dict = Depends(require_admin)):
+    await mcp_client.reconnect_all()
+    return {"servers": mcp_client.server_states()}
+
+
 # ── User profile endpoints ────────────────────────────────────────────────────
 
 async def _fetch_profile(db: aiosqlite.Connection, user_id: int) -> dict:
@@ -1002,6 +1171,10 @@ async def _is_db_admin(user_id: int) -> bool:
 # decide when a chat is getting long, so an exact figure isn't important.
 _CLOUD_CONTEXT_LENGTH = 200_000
 
+# Same idea for Databricks-hosted models — only feeds the frontend's
+# "this chat is getting long" hint, so a representative figure is enough.
+_DATABRICKS_CONTEXT_LENGTH = 128_000
+
 # /api/show is comparatively slow and a model's context length never changes, so
 # cache it for the process lifetime keyed by the full Ollama model name.
 _model_context_cache: dict[str, int | None] = {}
@@ -1084,8 +1257,14 @@ async def _resolve_vision_model(selected: str) -> tuple[str, str | None]:
         return selected, None
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            if "vision" in await _ollama_capabilities(client, selected):
-                return selected, None
+            # A Databricks endpoint isn't an Ollama model, so /api/show would
+            # only 404 on it. Skip the probe and look for a local stand-in; if
+            # none exists the request still goes out with the image attached
+            # (databricks_provider sends OpenAI vision blocks) and the endpoint
+            # decides whether it can see it.
+            if not databricks_provider.is_databricks_model(selected):
+                if "vision" in await _ollama_capabilities(client, selected):
+                    return selected, None
             alt = await _first_local_vision_model(client)
     except httpx.HTTPError:
         return selected, None  # Ollama unreachable — let the stream surface it
@@ -1100,7 +1279,8 @@ async def _resolve_vision_model(selected: str) -> tuple[str, str | None]:
 
 @app.get("/models")
 async def list_models(current_user: dict = Depends(get_current_user)):
-    """Local Ollama models for everyone; cloud (Claude) models for admins only."""
+    """Local Ollama and Databricks-hosted models for everyone; cloud (Claude)
+    models for admins only."""
     models: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -1114,7 +1294,15 @@ async def list_models(current_user: dict = Depends(get_current_user)):
                         {"id": name.removesuffix(":latest"), "kind": "local", "context_length": ctx}
                     )
     except httpx.HTTPError:
-        pass  # Ollama down — picker still shows cloud models if permitted
+        pass  # Ollama down — picker still shows remote models if permitted
+
+    # Databricks endpoints are billed to the household workspace but are not
+    # admin-gated: every whitelisted user gets them, like the local models.
+    if databricks_provider.databricks_available():
+        for dm in databricks_provider.databricks_models():
+            models.append(
+                {"id": dm, "kind": "databricks", "context_length": _DATABRICKS_CONTEXT_LENGTH}
+            )
 
     if providers.anthropic_available() and await _is_db_admin(int(current_user["sub"])):
         for cm in providers.cloud_models():

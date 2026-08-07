@@ -4,6 +4,7 @@ from datetime import datetime
 
 import httpx
 
+from skills import skills_prompt_block  # importing also registers the load_skill tool
 from tools import TOOL_REGISTRY, ToolContext, tool_schemas
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
@@ -26,8 +27,9 @@ MAX_HISTORY_MESSAGES = 40
 MAX_HISTORY_CHARS = 16_000
 
 # A single user turn may chain several tool calls (e.g. search, then remember);
-# the cap keeps a confused model from looping forever.
-MAX_TOOL_ROUNDS = 5
+# the cap keeps a confused model from looping forever. A skill-driven turn spends
+# one round on load_skill before it can do any actual work, hence 6 rather than 5.
+MAX_TOOL_ROUNDS = 6
 
 
 def _window_history(history: list[dict]) -> list[dict]:
@@ -64,6 +66,9 @@ def _system_prompt(ctx: ToolContext, facts: list[dict]) -> str:
         "call remember_fact to store it for future conversations. If they ask you to forget "
         "something, call forget_fact. Do not store transient conversation details.",
     ]
+    skills_block = skills_prompt_block()
+    if skills_block:
+        parts.append(skills_block)
     if facts:
         fact_lines = "\n".join(f"- {f['fact']}" for f in facts)
         parts.append(
@@ -169,11 +174,19 @@ async def stream_agent(
     the loop re-invokes the model with the results; otherwise the turn is done.
     The final round drops the tool schemas to force an answer.
 
-    Cloud (claude-*) models are dispatched to the Anthropic loop in providers.py,
-    which emits the same events.
+    Remote models are dispatched to their own loop, each emitting the same
+    events: cloud (claude-*) models to the Anthropic loop in providers.py, and
+    Databricks-hosted models to the OpenAI-compatible loop in
+    databricks_provider.py.
     """
+    from databricks_provider import is_databricks_model, stream_agent_databricks
     from memory import get_user_facts  # deferred: memory imports tools' registry
     from providers import is_cloud_model, stream_agent_anthropic
+
+    if is_databricks_model(model):
+        async for event in stream_agent_databricks(model, history, user_input, ctx, images=images):
+            yield event
+        return
 
     if is_cloud_model(model):
         async for event in stream_agent_anthropic(model, history, user_input, ctx, images=images):

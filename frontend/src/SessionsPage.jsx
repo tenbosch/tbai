@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useTheme } from "./ThemeContext";
 import TbaiLogo from "./TbaiLogo";
 import ProfileMenu from "./ProfileMenu";
 import NotificationsBell from "./NotificationsBell";
+import ThemeToggle from "./ThemeToggle";
 import useAuthFetch from "./useAuthFetch";
 
-const HEADER_H = 56;
+const HEADER_H = 64;
 const PAGE_SIZE = 10;          // chats shown per page
 const RETENTION_DAYS = 90;     // keep in sync with backend scheduler RETENTION_DAYS
 
@@ -62,20 +64,22 @@ export default function SessionsPage({ onNavigateAdmin, onNavigateHome, onOpenSe
     <div style={styles.root} className="tbai-vh">
       <div style={styles.header}>
         <button style={styles.logoBtn} onClick={onNavigateHome} title="Home">
-          <TbaiLogo style={{ padding: "4px 2px" }} variant={theme.mode === "dark" ? "dark" : "light"} />
+          <TbaiLogo variant={theme.mode} />
         </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <ThemeToggle />
           <NotificationsBell />
           <ProfileMenu onNavigateAdmin={onNavigateAdmin} />
         </div>
       </div>
 
       <div style={styles.body}>
-        <h1 style={styles.heading}>Your Chats</h1>
+        <h1 style={styles.heading}>Your chats</h1>
         <p style={styles.tagline}>Pick up where you left off, or start something new.</p>
 
         <button style={styles.newChatBtn} onClick={onNewChat}>
-          + New Chat
+          <Plus size={18} strokeWidth={2} />
+          New chat
         </button>
 
         {error && <div style={styles.errorBanner}>{error}</div>}
@@ -103,7 +107,7 @@ export default function SessionsPage({ onNavigateAdmin, onNavigateHome, onOpenSe
                 title="Delete session"
                 aria-label={`Delete chat "${s.title}"`}
               >
-                ×
+                <Trash2 size={16} strokeWidth={1.75} />
               </button>
             </div>
           ))}
@@ -116,7 +120,8 @@ export default function SessionsPage({ onNavigateAdmin, onNavigateHome, onOpenSe
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={pageSafe <= 1}
             >
-              ← Prev
+              <ChevronLeft size={16} strokeWidth={2} />
+              Prev
             </button>
             <span style={styles.pagerLabel}>
               Page {pageSafe} of {totalPages}
@@ -126,7 +131,8 @@ export default function SessionsPage({ onNavigateAdmin, onNavigateHome, onOpenSe
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={pageSafe >= totalPages}
             >
-              Next →
+              Next
+              <ChevronRight size={16} strokeWidth={2} />
             </button>
           </div>
         )}
@@ -142,8 +148,6 @@ export default function SessionsPage({ onNavigateAdmin, onNavigateHome, onOpenSe
 }
 
 function getStyles(theme) {
-  const errorBg = theme.mode === "dark" ? "rgba(243,139,168,0.15)" : "#fee2e2";
-
   return {
     root: {
       display: "flex",
@@ -151,15 +155,15 @@ function getStyles(theme) {
       overflow: "hidden",
       background: theme.bg,
       color: theme.text,
-      fontFamily: "sans-serif",
+      fontFamily: theme.fontBody,
     },
     header: {
       height: HEADER_H,
-      background: theme.bg,
+      background: theme.surface,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "0 16px",
+      padding: "0 clamp(14px, 4vw, 24px)",
       flexShrink: 0,
       borderBottom: `1px solid ${theme.border}`,
     },
@@ -181,28 +185,36 @@ function getStyles(theme) {
     },
     heading: {
       margin: 0,
+      fontFamily: theme.fontDisplay,
       fontSize: 28,
       fontWeight: 700,
+      letterSpacing: "-0.01em",
       color: theme.text,
     },
     tagline: {
-      margin: "8px 0 28px",
-      fontSize: 15,
+      margin: "10px 0 28px",
+      fontSize: 16,
       color: theme.subtext,
     },
     newChatBtn: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
       marginBottom: 36,
-      padding: "14px 32px",
+      height: 52,
+      padding: "0 28px",
       borderRadius: 10,
-      border: "none",
+      border: "1px solid transparent",
       background: theme.accent,
       color: theme.userBubbleText,
+      fontFamily: theme.fontBody,
       fontSize: 16,
-      fontWeight: 700,
+      fontWeight: 600,
       cursor: "pointer",
     },
     errorBanner: {
-      background: errorBg,
+      background: theme.errorSoft,
       border: `1px solid ${theme.error}`,
       borderRadius: 8,
       padding: "10px 14px",
@@ -225,16 +237,17 @@ function getStyles(theme) {
     },
     card: {
       position: "relative",
-      background: theme.surface,
+      background: theme.surfaceWarm,
       border: `1px solid ${theme.border}`,
       borderRadius: 10,
-      padding: "14px 40px 14px 18px",
+      padding: "14px 44px 14px 18px",
       textAlign: "left",
       cursor: "pointer",
+      boxShadow: "0 1px 2px rgba(var(--shadow-color), 0.08)",
     },
     cardTitle: {
       fontWeight: 600,
-      fontSize: 14,
+      fontSize: 15,
       color: theme.text,
       whiteSpace: "nowrap",
       overflow: "hidden",
@@ -255,12 +268,16 @@ function getStyles(theme) {
       maxWidth: 640,
     },
     pagerBtn: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
       padding: "8px 14px",
       minHeight: 40,
-      borderRadius: 8,
-      border: `1px solid ${theme.border}`,
+      borderRadius: 10,
+      border: `1px solid ${theme.borderStrong}`,
       background: theme.surface,
       color: theme.text,
+      fontFamily: theme.fontBody,
       fontSize: 14,
       fontWeight: 600,
       cursor: "pointer",
@@ -281,8 +298,8 @@ function getStyles(theme) {
     },
     deleteBtn: {
       position: "absolute",
-      top: 8,
-      right: 8,
+      top: 10,
+      right: 10,
       width: 32,
       height: 32,
       display: "flex",
@@ -292,11 +309,10 @@ function getStyles(theme) {
       border: "none",
       color: theme.muted,
       cursor: "pointer",
-      fontSize: 20,
       lineHeight: 1,
       padding: 0,
       opacity: 0,
-      transition: "opacity 0.1s",
+      transition: "opacity 0.12s",
     },
   };
 }
