@@ -26,6 +26,7 @@ import useAuthFetch from "./useAuthFetch";
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
 import { onDesktopCommand, postDesktopState } from "./desktopBridge";
+import MermaidDiagram, { MermaidBlockContext } from "./MermaidDiagram";
 
 const API = "";
 const HEADER_H = 64;
@@ -55,8 +56,21 @@ function modelLabel(m) {
 }
 
 // Cited-source links must open in a new tab — same-tab navigation loses the chat.
+// ```mermaid blocks render as diagrams instead of code; anything else keeps the
+// default <pre>. `code` here is the fenced block's language ("mermaid", "", …).
 const markdownComponents = {
   a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  // `node` is react-markdown's mdast handle — strip it so it never reaches the
+  // DOM element; everything else rehype put on the <pre> is forwarded.
+  pre: ({ children, node: _node, ...props }) => {
+    const codeEl = Array.isArray(children) ? children[0] : children;
+    const className = codeEl?.props?.className || "";
+    const language = /language-([\w-]+)/.exec(className)?.[1] || "";
+    if (language === "mermaid") {
+      return <MermaidDiagram code={String(codeEl.props.children || "")} />;
+    }
+    return <pre {...props}>{children}</pre>;
+  },
 };
 
 // Coarse-pointer (touch) devices: Enter is the natural newline key and half-typed
@@ -844,6 +858,19 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
   // (only meaningful for assistant messages; user text has no sources block).
   const { body, sources } = msg.role === "assistant" ? splitSources(msg.text) : { body: msg.text, sources: [] };
 
+  // What a ```mermaid block inside this message needs to know. A reply cut short
+  // by Stop (or a disconnect) can end mid-fence, and remark parses an unclosed
+  // fence as a code block running to EOF — so an odd fence count means the last
+  // block is genuinely partial, and it should show its source rather than an
+  // alarming parse-error box.
+  const mermaidCtx = useMemo(
+    () => ({
+      settled: !isStreamingThis,
+      unterminated: ((body || "").match(/^```/gm) || []).length % 2 === 1,
+    }),
+    [body, isStreamingThis]
+  );
+
   // Give replies that carry a sources box a little more room so the cards aren't cramped.
   const assistantStyle = sources.length
     ? { ...styles.assistantBubble, maxWidth: "92%" }
@@ -871,9 +898,11 @@ const MessageBubble = memo(function MessageBubble({ msg, isStreamingThis, styles
         </>
       ) : (
         <div style={styles.markdown} className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {body}
-          </ReactMarkdown>
+          <MermaidBlockContext.Provider value={mermaidCtx}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {body}
+            </ReactMarkdown>
+          </MermaidBlockContext.Provider>
           <SourcesList items={sources} styles={styles} />
           {msg.status && (
             <div style={styles.statusChip} aria-live="polite" role="status">
