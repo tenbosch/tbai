@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -432,6 +433,24 @@ def _format_tools_used(tools: list[dict]) -> str:
     return f"[tools used: {', '.join(parts)}]"
 
 
+# Models that read the "[tools used: …]" annotation on earlier turns tend to
+# mimic it and sign off with one of their own (kimi3 does so in roughly two of
+# every three tool-using replies, despite the system prompt forbidding it).
+# Left in, the fabrication is persisted and then read back next turn as though
+# it were the system's own record — corrupting the very thing the record exists
+# for, and rendering twice in the bubble. The prompt asks; this guarantees.
+_FABRICATED_TOOLS_MARKER = re.compile(r"\s*\[tools used:[^\]\n]*\]\s*$", re.IGNORECASE)
+
+
+def _strip_fabricated_tools_marker(text: str) -> str:
+    """Drop a trailing '[tools used: …]' line the model wrote itself.
+
+    Anchored at the very end and limited to a single bracketed line, so prose
+    that merely mentions the annotation mid-reply is left alone.
+    """
+    return _FABRICATED_TOOLS_MARKER.sub("", text)
+
+
 def _dedupe_tools(tools_used: list[dict]) -> list[dict]:
     """Collapse repeat calls, preserving first-call order.
 
@@ -514,7 +533,9 @@ async def stream_agent_and_save(
             yield json.dumps(event) + "\n"
         completed = True
     finally:
-        full_response = "".join(tokens) + sources_md
+        # Strip before the sources block is appended: the model's fabricated
+        # marker is always the tail of its own text.
+        full_response = _strip_fabricated_tools_marker("".join(tokens)) + sources_md
         tools_used = _dedupe_tools(ctx.tools_used)
         if full_response.strip():
             save_task = asyncio.create_task(

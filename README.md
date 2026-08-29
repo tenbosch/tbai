@@ -13,7 +13,7 @@ New capabilities can be added three ways without touching any agent loop: Python
 **Chat & models**
 - **Streaming chat** — tokens appear as the model generates them (NDJSON stream end-to-end)
 - **Local LLM** — any model installed in Ollama (default: `gemma4`)
-- **Model picker** — switch models per chat; choice is remembered per user. Alongside the local models it can show **Databricks**-hosted models (e.g. `databricks-kimi-k3`, available to every whitelisted user) and, for admins with an Anthropic key, cloud **Claude** models (`claude-*`)
+- **Model picker** — switch models per chat; choice is remembered per user. Alongside the local models it can show **Databricks**-hosted models (e.g. `tenbosch.tbai.kimi3`, available to every whitelisted user) and, for admins with an Anthropic key, cloud **Claude** models (`claude-*`)
 - **Iterative tool use** — the model can call tools across multiple rounds within one turn, streaming progress markers ("🔍 Searching the web…") as it goes
 - **Attachments** — attach images (for vision-capable local models) and text files to a message (≤10 MB each)
 - **Voice** — 🎙️ dictate your message (Web Speech) and 🔊 have replies read aloud (browser speech synthesis)
@@ -128,15 +128,21 @@ CORS_ORIGIN=https://localhost:5173
 BRAVE_API_KEY=           # from https://brave.com/search/api/ (free tier), powers the web_search tool
 ANTHROPIC_API_KEY=       # optional — enables admin-only cloud Claude models in the picker
 ANTHROPIC_MODELS=        # optional — comma-separated cloud model ids (default: claude-opus-4-8)
-DATABRICKS_TOKEN=        # optional — Databricks workspace personal access token
+DATABRICKS_CLIENT_ID=    # optional — Databricks service principal OAuth client id
+DATABRICKS_CLIENT_SECRET=# optional — that service principal's OAuth secret
 DATABRICKS_BASE_URL=     # optional — workspace AI Gateway base URL, must end at /v1
-DATABRICKS_MODELS=       # optional — comma-separated serving-endpoint names (default: databricks-kimi-k3)
+DATABRICKS_MODELS=       # optional — comma-separated model names (default: tenbosch.tbai.kimi3)
+DATABRICKS_HOST=         # optional — OIDC host override; derived from DATABRICKS_BASE_URL otherwise
+DATABRICKS_OAUTH_SCOPE=  # optional — OAuth scope (default: all-apis)
 ```
 
-Databricks-hosted models (e.g. `databricks-kimi-k3`) are reached through the workspace AI
+Databricks-hosted models (e.g. `tenbosch.tbai.kimi3`) are reached through the workspace AI
 Gateway's OpenAI-compatible API and appear in the model picker for **every whitelisted user**,
-unlike the admin-only Claude models. Set all three variables to enable them; leave
-`DATABRICKS_TOKEN` blank and they simply don't appear.
+unlike the admin-only Claude models. The app authenticates as a Databricks **service
+principal** via OAuth machine-to-machine (`client_credentials`), exchanging the client
+id/secret for a short-lived token that it caches in-process — there is no personal access
+token. Set the client id, secret and base URL to enable them; leave the credentials blank and
+they simply don't appear. The service principal needs `CAN_QUERY` on the model.
 
 **`frontend/.env`**
 ```

@@ -5,11 +5,11 @@ import TbaiLogo from "./TbaiLogo";
 // you by CloudFlare directly from Jeffs Home Computer!" — split into words so
 // each can cascade in independently; a few brand names get their real colors.
 const SENTENCE =
-  "Designed by Jeff and Claude, powered by Gemma from Google, and brought to you by CloudFlare directly from Jeffs Home Computer!";
+  "Designed by Jeff and Claude, powered by Gemma and Databricks, and brought to you by CloudFlare directly from Jeffs Home Computer!";
 
 // The one brand color (forest green) picks out the names — no rainbow of
 // external brand colors, per the design system's single-accent rule.
-const EMPHASIS = new Set(["Jeff", "Jeffs", "Claude", "Gemma", "Google", "CloudFlare"]);
+const EMPHASIS = new Set(["Jeff", "Jeffs", "Claude", "Gemma", "Databricks", "Google", "CloudFlare"]);
 
 const WORDS = SENTENCE.split(" ").map((word, i) => {
   const clean = word.replace(/[.,!]/g, "");

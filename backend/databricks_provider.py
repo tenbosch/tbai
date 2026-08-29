@@ -1,10 +1,16 @@
 """Databricks-hosted models: the agent loop for an OpenAI-compatible endpoint.
 
-Models served from a Databricks workspace (e.g. databricks-kimi-k3) are reached
+Models served from a Databricks workspace (e.g. tenbosch.tbai.kimi3) are reached
 through the workspace AI Gateway, which speaks the OpenAI chat-completions API.
 Like providers.py this emits the same NDJSON event dicts (token/status/sources/
 error), executes the same TOOL_REGISTRY tools, and shares the same system prompt
 as the local Ollama loop — only the transport and message format differ.
+
+Auth is OAuth machine-to-machine: the app holds a Databricks *service principal*
+client id/secret and exchanges them for a short-lived bearer token via the
+workspace's `client_credentials` grant (_oauth_token below). There is no personal
+access token anywhere — a PAT belongs to a human, expires with them, and carries
+that human's full workspace privileges.
 
 Unlike the Anthropic models, these are NOT admin-gated: any whitelisted user can
 pick one (see /models and /chat in main.py). That is why routing uses
@@ -21,10 +27,14 @@ tool_schemas() is passed through verbatim — no translation layer, unlike
 providers._anthropic_tools().
 """
 
+import asyncio
 import json
 import logging
 import os
+import time
+from urllib.parse import urlsplit
 
+import httpx
 import openai
 
 from tools import TOOL_REGISTRY, ToolContext, tool_schemas
@@ -32,9 +42,21 @@ from tools import TOOL_REGISTRY, ToolContext, tool_schemas
 log = logging.getLogger("tbai.databricks")
 
 DATABRICKS_MODELS_ENV = "DATABRICKS_MODELS"
-DEFAULT_DATABRICKS_MODELS = ["databricks-kimi-k3"]
+DEFAULT_DATABRICKS_MODELS = ["tenbosch.tbai.app_model"]
 
-MAX_OUTPUT_TOKENS = 8192  # a ceiling, not a target — billing is per actual token
+# Workspace-level M2M grant. "all-apis" is the documented default; the workspace
+# also advertises narrower scopes (model-serving-inference, ai-gateway) if this
+# ever needs tightening, hence the env override rather than a literal.
+DEFAULT_OAUTH_SCOPE = "all-apis"
+
+# Refresh this long before the token actually expires, so a request can never
+# start with a credential that dies mid-stream.
+TOKEN_EXPIRY_MARGIN = 300.0
+
+# A ceiling, not a target — billing is per actual token. Note a reasoning
+# model spends this budget on its (hidden) thinking too, so it must stay well
+# clear of what a long answer alone would need.
+MAX_OUTPUT_TOKENS = 8192
 
 # Generous enough to survive a scale-to-zero endpoint waking up, but bounded so
 # a hung gateway can never hold a /chat request open forever.
@@ -46,8 +68,108 @@ REQUEST_TIMEOUT = 300.0
 _TOOLS_UNSUPPORTED: set[str] = set()
 
 
+class DatabricksAuthError(RuntimeError):
+    """The service-principal credentials could not be exchanged for a token."""
+
+
+# One cached bearer token for the whole process: every family member's chat runs
+# as the same service principal, so there is nothing per-user to key on.
+_token: str | None = None
+_token_expires_at: float = 0.0
+_token_lock = asyncio.Lock()
+
+
+def _workspace_host() -> str:
+    """Scheme + host of the workspace, for the OIDC token endpoint.
+
+    Derived from DATABRICKS_BASE_URL, which is right for the
+    https://<workspace>.cloud.databricks.com/ai-gateway/mlflow/v1 form. The
+    alternative https://<workspace-id>.ai-gateway.cloud.databricks.com/mlflow/v1
+    form sits on a different OIDC host, which is what DATABRICKS_HOST overrides.
+    """
+    raw = os.getenv("DATABRICKS_HOST") or os.getenv("DATABRICKS_BASE_URL", "")
+    parts = urlsplit(raw if "//" in raw else f"https://{raw}")
+    if not parts.netloc:
+        raise DatabricksAuthError("DATABRICKS_BASE_URL is not a valid URL")
+    return f"{parts.scheme or 'https'}://{parts.netloc}"
+
+
+def _token_endpoint() -> str:
+    """The workspace OIDC token endpoint, per its discovery document."""
+    return f"{_workspace_host()}/oidc/v1/token"
+
+
+def invalidate_token() -> None:
+    """Drop the cached token so the next turn re-authenticates.
+
+    Called when the gateway rejects it — a rotated or revoked secret would
+    otherwise keep being replayed until the cached expiry passed.
+    """
+    global _token, _token_expires_at
+    _token, _token_expires_at = None, 0.0
+
+
+async def _oauth_token() -> str:
+    """Return a valid bearer token for the service principal, cached in-process.
+
+    Uses the workspace's OAuth M2M (client_credentials) grant with HTTP Basic
+    auth, which is the token_endpoint_auth_method the workspace advertises.
+    """
+    global _token, _token_expires_at
+    if _token and time.monotonic() < _token_expires_at:
+        return _token
+    async with _token_lock:
+        # Re-check inside the lock: several concurrent chats arriving on a cold
+        # cache should cost one token request between them, not one each.
+        if _token and time.monotonic() < _token_expires_at:
+            return _token
+
+        client_id = os.getenv("DATABRICKS_CLIENT_ID")
+        client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
+        if not (client_id and client_secret):
+            raise DatabricksAuthError("DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET are not set")
+        scope = os.getenv("DATABRICKS_OAUTH_SCOPE") or DEFAULT_OAUTH_SCOPE
+
+        endpoint = _token_endpoint()
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    endpoint,
+                    auth=(client_id, client_secret),
+                    data={"grant_type": "client_credentials", "scope": scope},
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+        except httpx.HTTPStatusError as exc:
+            # The body names the actual cause (bad secret, unknown scope,
+            # disabled principal). Worth logging; never worth showing a user.
+            log.error(
+                "Databricks token request to %s failed %s: %s",
+                endpoint, exc.response.status_code, exc.response.text,
+            )
+            raise DatabricksAuthError(f"token endpoint returned {exc.response.status_code}") from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            log.error("Databricks token request failed: %s", exc)
+            raise DatabricksAuthError(str(exc)) from exc
+
+        access_token = payload.get("access_token")
+        if not access_token:
+            raise DatabricksAuthError("token endpoint returned no access_token")
+        ttl = float(payload.get("expires_in", 3600))
+        _token = access_token
+        _token_expires_at = time.monotonic() + max(ttl - TOKEN_EXPIRY_MARGIN, 60.0)
+        log.info("Databricks service-principal token acquired (expires in %.0fs)", ttl)
+        return _token
+
+
 def databricks_available() -> bool:
-    return bool(os.getenv("DATABRICKS_TOKEN") and os.getenv("DATABRICKS_BASE_URL"))
+    """Pure env check, no network: this runs on every /models request and on
+    every chat turn via is_databricks_model(), so it has to stay cheap."""
+    return bool(
+        os.getenv("DATABRICKS_BASE_URL")
+        and os.getenv("DATABRICKS_CLIENT_ID")
+        and os.getenv("DATABRICKS_CLIENT_SECRET")
+    )
 
 
 def databricks_models() -> list[str]:
@@ -75,6 +197,17 @@ def _user_message(user_input: str, images: list[dict] | None) -> dict:
     ]
     content.append({"type": "text", "text": user_input})
     return {"role": "user", "content": content}
+
+
+def _reasoning_delta(delta) -> str | None:
+    """The chain-of-thought fragment on this delta, if the model emits one.
+
+    Reasoning models (kimi3 among them) stream a long `reasoning_content`
+    preamble before the first answer token. It isn't part of the OpenAI schema,
+    so the SDK parks it in model_extra rather than on a typed attribute.
+    """
+    extra = getattr(delta, "model_extra", None) or {}
+    return extra.get("reasoning_content") or getattr(delta, "reasoning_content", None)
 
 
 def _collect_tool_call(calls: dict[int, dict], delta_call) -> None:
@@ -107,8 +240,9 @@ def _status_error_event(exc: openai.APIStatusError) -> dict:
         return {
             "type": "error",
             "text": (
-                "That Databricks model endpoint wasn't found. Check DATABRICKS_MODELS "
-                "and DATABRICKS_BASE_URL in backend/.env."
+                "That Databricks model wasn't found. Check DATABRICKS_MODELS and "
+                "DATABRICKS_BASE_URL in backend/.env — the model is addressed by its "
+                "full catalog.schema.name."
             ),
         }
     if 400 <= exc.status_code < 500 and exc.message:
@@ -147,8 +281,21 @@ async def stream_agent_databricks(
     )
     messages.append(_user_message(user_input, images))
 
+    try:
+        api_key = await _oauth_token()
+    except DatabricksAuthError as exc:
+        log.error("Databricks service-principal auth failed: %s", exc)
+        yield {
+            "type": "error",
+            "text": (
+                "Couldn't authenticate to Databricks as the service principal. Check "
+                "DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET in backend/.env."
+            ),
+        }
+        return
+
     client = openai.AsyncOpenAI(
-        api_key=os.getenv("DATABRICKS_TOKEN"),
+        api_key=api_key,
         base_url=os.getenv("DATABRICKS_BASE_URL"),
         timeout=REQUEST_TIMEOUT,
     )
@@ -163,6 +310,8 @@ async def stream_agent_databricks(
 
             content_parts: list[str] = []
             calls: dict[int, dict] = {}
+            finish_reason: str | None = None
+            thinking_shown = False
 
             # Loops at most twice, and only to retry without `tools` when the
             # endpoint turns out not to support function calling.
@@ -181,12 +330,21 @@ async def stream_agent_databricks(
                     async for chunk in stream:
                         if not chunk.choices:
                             continue  # usage-only / keep-alive chunk
+                        finish_reason = chunk.choices[0].finish_reason or finish_reason
                         delta = chunk.choices[0].delta
                         if delta is None:
                             continue
                         if delta.content:
                             content_parts.append(delta.content)
                             yield {"type": "token", "text": delta.content}
+                        elif not thinking_shown and _reasoning_delta(delta):
+                            # We deliberately never show the reasoning text, but
+                            # without a cue the bubble sits empty for however
+                            # long the model thinks. One status chip covers it —
+                            # the first real token clears it (ChatComponent
+                            # nulls `status` on every token event).
+                            thinking_shown = True
+                            yield {"type": "status", "text": "Thinking…"}
                         for delta_call in delta.tool_calls or []:
                             _collect_tool_call(calls, delta_call)
                 except (openai.BadRequestError, openai.UnprocessableEntityError) as exc:
@@ -209,6 +367,17 @@ async def stream_agent_databricks(
                 break
 
             if not calls:
+                if not content_parts and finish_reason == "length":
+                    # A reasoning model can burn the whole output budget on
+                    # thinking and never reach an answer, which would otherwise
+                    # save an empty assistant bubble.
+                    yield {
+                        "type": "error",
+                        "text": (
+                            "The model used its whole output budget thinking and didn't "
+                            "get to an answer. Try a shorter or more specific question."
+                        ),
+                    }
                 break  # normal answer — turn complete
 
             # The model called tools: record its turn verbatim, run each tool,
@@ -245,11 +414,14 @@ async def stream_agent_databricks(
                     {"role": "tool", "tool_call_id": c["id"], "content": result_text}
                 )
     except openai.AuthenticationError:
+        # The credential itself may have been rotated or revoked mid-cache;
+        # drop it so the next turn re-authenticates instead of replaying it.
+        invalidate_token()
         yield {
             "type": "error",
             "text": (
-                "Databricks rejected the access token. Check DATABRICKS_TOKEN in "
-                "backend/.env — personal access tokens expire."
+                "Databricks rejected the service principal. It most likely lacks "
+                "CAN_QUERY on the model, or its OAuth secret was rotated."
             ),
         }
         return

@@ -197,7 +197,8 @@
       // Mirrors modelLabel() in frontend/src/ChatComponent.jsx — keep in sync.
       function modelLabel(m) {
         if (m.kind === "cloud") return "Cloud · " + m.id;
-        if (m.kind === "databricks") return "Databricks · " + m.id.replace(/^databricks-/, "");
+        if (m.kind === "databricks")
+          return "Databricks · " + m.id.replace(/^databricks-/, "").split(".").pop();
         return m.id;
       }
 
