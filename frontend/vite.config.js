@@ -78,6 +78,7 @@ export default defineConfig({
       "lucide-react",
       "react-markdown",
       "remark-gfm",
+      "mermaid",
       "animejs",
       "@react-oauth/google",
     ],
