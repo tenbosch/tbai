@@ -45,7 +45,12 @@ const WARN_AT = 0.75; // show the "start a new chat" banner at 75% of the effect
 // ones leave the house. Mirrored in desktop/toolbar.html — keep the two in sync.
 function modelLabel(m) {
   if (m.kind === "cloud") return `Cloud · ${m.id}`;
-  if (m.kind === "databricks") return `Databricks · ${m.id.replace(/^databricks-/, "")}`;
+  // A Databricks id is either a serving-endpoint name ("databricks-kimi-k3") or
+  // a Unity Catalog model ("catalog.schema.name") — both read best as the last
+  // distinctive part, so strip the prefix and keep the final dotted segment.
+  if (m.kind === "databricks") {
+    return `Databricks · ${m.id.replace(/^databricks-/, "").split(".").pop()}`;
+  }
   return m.id;
 }
 

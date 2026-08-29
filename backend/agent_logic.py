@@ -87,8 +87,15 @@ def _system_prompt(ctx: ToolContext, facts: list[dict]) -> str:
         "message has no such line, you used no tools on that turn — except that older "
         "messages can predate this record, so if a reply without the line clearly did use "
         "tools (for example it cites sources), say you cannot tell rather than denying it. "
-        "Never write one of these lines yourself, and never claim you used or skipped a "
-        "tool without one.",
+        "Never claim you used or skipped a tool without one.",
+        # Its own paragraph, and last, because buried in the block above it was
+        # widely ignored — a reasoning model reads the annotation's format as a
+        # pattern to imitate and signs off with one. The save path strips any
+        # that slip through (main._strip_fabricated_tools_marker); this is the
+        # half that keeps it out of the user's view in the first place.
+        "NEVER end your reply with a '[tools used: ...]' line. The system appends that "
+        "line itself — writing your own is not helpful, it is a fabrication that "
+        "corrupts the record. Your reply must end with your actual answer to the user.",
     ]
     if facts:
         fact_lines = "\n".join(f"- {f['fact']}" for f in facts)
